@@ -26,9 +26,9 @@ void app_main(void)
   io_config.intr_type = 0;
   if(gpio_config(&io_config) == ESP_ERR_INVALID_ARG) ESP_LOGE(TAG, "Invalid argument to GPIO config function.");
   
-  // blinky w/ 250 ms intervals
+  // blinky w/ 1 s intervals
   uint8_t led_out = 0;
-  const TickType_t interval = pdMS_TO_TICKS(250);
+  const TickType_t interval = pdMS_TO_TICKS(1000);
   while(true){
     gpio_set_level(GPIO_NUM_22, led_out);
     vTaskDelay(interval);
