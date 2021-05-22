@@ -6,12 +6,12 @@
 
 //--------------------------------------------------------------
 
-#define GPIO_OUT_BIT_MASK (1ULL << GPIO_NUM_22)  
+#define GPIO_OUT_BIT_MASK (1ULL << GPIO_NUM_22)  // use PIN22 for LED
 
 #define ON 1
 #define OFF 0
 
-#define TAG "main"
+#define TAG "main" // tag for logging
 
 //--------------------------------------------------------------
 
