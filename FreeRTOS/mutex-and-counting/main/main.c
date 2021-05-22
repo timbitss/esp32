@@ -20,7 +20,7 @@ void increment()
   xSemaphoreGive(xMutex);
 }
 
-// Increment num 100 times
+// Increment num 800000 times
 void vTask(void* pvParameters)
 {
   for(uint32_t i = 0; i < 800000UL; i++){
