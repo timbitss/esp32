@@ -1,0 +1,2 @@
+## Notes
+* App_main's stack frame is popped once all threads are made. Therefore, objects defined and passed by reference in app_main() **must** have *static* keyword to remain valid for the program's entirety. See [queue](queue/main/main.c) example. 

@@ -45,5 +45,4 @@ void app_main(void)
   vTaskDelete(task2);
   ESP_LOGI(TAG, "Tasks deleted.");
 
-  // Should never reach this point if scheduler is active.
 }

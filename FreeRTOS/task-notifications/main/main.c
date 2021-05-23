@@ -57,5 +57,4 @@ void app_main(void)
   // Scheduler already started, does not need to be called.
   // vTaskStartScheduler();
 
-  // Should never arrive here if things went smoothly. 
 }
