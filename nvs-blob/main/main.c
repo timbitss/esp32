@@ -5,7 +5,7 @@
  * @version 0.1
  * @date 2021-05-26
  * 
- * @note Custom partition table is located in partition2.csv. 
+ * @note Custom partition table is located in partition2.csv under root project directory. 
  *       Must update configuration through idf.py menuconfig to use the custom partition table.
  */
 

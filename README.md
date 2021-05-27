@@ -11,8 +11,8 @@
   - [Event Groups](FreeRTOS/event-groups/main/main.c)
 - [ESP32 High Resolution Timer](highres-timer/main/main.c)
 - [Internal Heap Memory Allocation](sram/main/main.c)
-- [Non-volatile Storage](nvs/main/main.c)
-- [Non-volatile Storage of Structures](nvs-blob/main/main.c)
+- [Non-Volatile Storage](nvs/main/main.c)
+- [Non-Volatile Storage of Structures](nvs-blob/main/main.c)
   
 ## **Notes**
 * [Espressif's ESP-IDF framework](https://github.com/espressif/esp-idf) must be installed on user's host machine to build and flash the projects. 
