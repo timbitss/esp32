@@ -83,8 +83,7 @@ void app_main()
 
     }
 
-    /* Print some info regarding nvs partition.
-       2 used entries: 1 entry for namespace, 1 entry for key-value pair */
+    /* Print some info regarding nvs partition. */
     nvs_stats_t stats;
     nvs_get_stats(custom_nvs, &stats);
                                                                                      // namespace count within partition
