@@ -89,7 +89,7 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(gpio_config(&io_config));
 
-    ESP_LOGI(APPMAIN, "Installing GPIO ISR handler service, then adding only one ISR handler for all GPIOS");
+    ESP_LOGI(APPMAIN, "Installing GPIO ISR handler service, then register only one handler to address all GPIO interrupts");
     ESP_ERROR_CHECK(gpio_install_isr_service(0));
     ESP_ERROR_CHECK(gpio_isr_handler_add(GPIO_NUM_21, isr_handler_GPIO, (void*)GPIO_NUM_21));
     ESP_ERROR_CHECK(gpio_isr_handler_add(GPIO_NUM_27, isr_handler_GPIO, (void*)GPIO_NUM_27));
