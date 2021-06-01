@@ -38,7 +38,7 @@ void app_main()
     ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer_conf));
     
     ESP_LOGI(APPMAIN, "Configuring high-speed channel group");
-    static const ledc_channel_config_t ledc_channel_conf[2] = {
+    static ledc_channel_config_t ledc_channel_conf[2] = {
         {
         .gpio_num = GPIO_NUM_15,
         .speed_mode = LEDC_HIGH_SPEED_MODE,
@@ -61,7 +61,7 @@ void app_main()
     ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel_conf[0]));
     ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel_conf[1]));
     
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(3000));
 
     ESP_LOGI(APPMAIN, "Configuring fade for LEDs");
     ledc_fade_func_install(0);
