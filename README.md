@@ -8,6 +8,7 @@
 - [Non-Volatile Storage of Structures](nvs-blob/main/main.c)
 - [SPI Flash Filesystem](spiffs/main/main.c)
 - [GPIO](gpio/)
+- [Protocols](protocols/)
   
 ## **Notes**
 * [Espressif's ESP-IDF framework](https://github.com/espressif/esp-idf) must be installed on user's host machine to build and flash the projects. 
