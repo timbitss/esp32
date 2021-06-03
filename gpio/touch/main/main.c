@@ -23,7 +23,7 @@
 /* For touch sensor drivers */
 #define ZERO_THRESHOLD    0      // Initialize GPIOs with zero interrupt threshold            
 #define FILTER_PERIOD_MS  10     // IIR Filter Sampling Period (ms)
-#define TOUCH_PADS_USED   3     // Number of touch pads used
+#define TOUCH_PADS_USED   3      // Number of touch pads used
 
 /* For logging data */
 #define APPMAIN     "APPMAIN"
@@ -33,11 +33,12 @@
 /* Interrupt thresholds of each touch pad */
 static uint16_t pad_thresh[TOUCH_PADS_USED] = {0};
 
+/* true = touch pad pressed, false = touch pad not pressed */
+static bool pad_touched[TOUCH_PADS_USED] = {0}; 
+
 /* Touch task handle */
 TaskHandle_t touch_task_handle;
 
-/* true = touch pad pressed, false = touch pad not pressed */
-static bool pad_touched[TOUCH_PADS_USED] = {0}; 
 
 /**
  * @brief Prints out which touch pads were pressed when notified by ISR
