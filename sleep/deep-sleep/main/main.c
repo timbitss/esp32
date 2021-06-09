@@ -56,7 +56,7 @@ void app_main()
     ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(5000000)); // wakeup after 5 seconds
 
     ESP_LOGI(TAG, "Enabling EXT1 wakeup from deep sleep.");
-    if (rtc_gpio_is_valid_gpio(GPIO_NUM_13) == true && rtc_gpio_is_valid_gpio(GPIO_NUM_15))
+    if (rtc_gpio_is_valid_gpio(GPIO_NUM_13) && rtc_gpio_is_valid_gpio(GPIO_NUM_15))
     {
         rtc_gpio_pulldown_en(GPIO_NUM_15);
         rtc_gpio_pullup_dis(GPIO_NUM_15);
@@ -66,7 +66,7 @@ void app_main()
     }
     else
     {
-        ESP_LOGE(TAG, "GPIO19 is not a valid RTC pin");
+        ESP_LOGE(TAG, "RTC pins required for EXT1 wakeup.");
     }
 
     ESP_LOGI(TAG, "Going to deep sleep...");

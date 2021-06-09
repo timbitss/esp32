@@ -62,7 +62,7 @@ void app_main()
         .bssid = 0,   // search for all BSSIDs/MACs
         .channel = 0, // search all channels
         .show_hidden = true};
-    ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_config, true));
+    ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_config, true)); // blocking
 
     uint16_t num_aps = MAX_APS;
     wifi_ap_record_t ap_records[MAX_APS];
