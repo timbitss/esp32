@@ -13,7 +13,6 @@
 #include "esp_http_client.h"
 #include "esp_err.h"
 #include "rest.h"
-#include "cJSON.h"
 
 #define TAG "REST" // Tag for logging data and information.
 
@@ -58,9 +57,10 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
         break;
     case HTTP_EVENT_ON_FINISH:
         ESP_LOGI(TAG, "HTTP_EVENT_ON_FINISH");
-        printf("%s\n", rx_buffer); 
-        json_parse_t* json_parse_ptr = (json_parse_t*)evt->user_data;
-        json_parse_ptr->parse_json(rx_buffer, json_parse_ptr->payload_str);
+        printf("%s\n", rx_buffer);
+        // Parse JSON string after all packets have been received. 
+        payload_config_t* payload_config = (payload_config_t*)evt->user_data;
+        payload_config->err = payload_config->parse_json(rx_buffer, payload_config->payload_str);
         memset((char*) rx_buffer, 0, BUFFER_SIZE); // Clear rx_buffer.
         break;
     case HTTP_EVENT_DISCONNECTED:
@@ -71,16 +71,17 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 }
 
 /**
- * @brief GET resource located at URL using REST/HTTP API
+ * @brief Get JSON string from web server and parse it.
  * 
- * @param url URL of resource
+ * @param[in,out] payload_config As an input, payload_config holds URL and application-specific parser function.
+ *                               As an output, payload_config holds payload string and result of parsing JSON.
  */
-void rest_get(json_parse_t* json_parse_ptr)
+void rest_get_json(payload_config_t* payload_config)
 {
     esp_http_client_config_t config = {
-        .url = json_parse_ptr->endpoint,
+        .url = payload_config->endpoint,
         .event_handler = http_event_handler,
-        .user_data = json_parse_ptr
+        .user_data = payload_config
         };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     /* Perform HTTP transaction (GET by default).
@@ -93,7 +94,7 @@ void rest_get(json_parse_t* json_parse_ptr)
     }
     else
     {
-        ESP_LOGE(TAG, "Error performing GET transaction at %s", json_parse_ptr->endpoint);
+        ESP_LOGE(TAG, "Error getting JSON string at %s", payload_config->endpoint);
     }
 
     ESP_ERROR_CHECK(esp_http_client_close(client));

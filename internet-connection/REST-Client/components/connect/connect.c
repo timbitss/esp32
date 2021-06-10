@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include "esp_wifi.h"
 #include "esp_event.h"
-#include "nvs_flash.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "connect.h"
@@ -18,10 +17,16 @@
 #define PWD CONFIG_WIFI_PASSWORD // Password of Target AP to connect to.
 
 // Tags for logging data and information.
-#define EVENT_HANDLER "WIFI_EVENT_HANDLER"
+#define WIFI_EVENT_HANDLER "WIFI_EVENT_HANDLER"
 #define WIFI_INIT "WIFI_INIT"
 
 #define MAX_RETRY_ATTEMPTS 10 // Maximum number of attempts to connect to Wi-Fi before giving up.
+
+// Event group object for communication between Wi-FI event handler and application task.
+EventGroupHandle_t wifi_evt_group;
+
+// Distinguish between connection failures and actual esp_wifi_disconnect() call.
+bool dont_reconnect = false;
 
 /**
  * @brief Event handler/call back registered for WIFI and IP events.
@@ -37,30 +42,41 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     switch (event_id)
     {
     case WIFI_EVENT_STA_START:
-        ESP_LOGI(EVENT_HANDLER, "Attempted to connect to AP, SSID: %s, PWD: %s", SSID, PWD);
-        esp_wifi_connect(); 
+        ESP_LOGI(WIFI_EVENT_HANDLER, "Attempted to connect to AP, SSID: %s, PWD: %s", SSID, PWD);
+        esp_wifi_connect();
         break;
     case WIFI_EVENT_STA_CONNECTED:
-        xEventGroupSetBits(evt_group, WIFI_CONNECTED_BIT);
+        xEventGroupSetBits(wifi_evt_group, WIFI_CONNECTED_BIT);
         attempts = 0;
         break;
     case IP_EVENT_STA_GOT_IP:
-        xEventGroupSetBits(evt_group, IP_GOT_IP_BIT);
+        xEventGroupSetBits(wifi_evt_group, IP_GOT_IP_BIT);
         break;
     case WIFI_EVENT_STA_DISCONNECTED:
-        attempts++;
-        if (attempts <= MAX_RETRY_ATTEMPTS)
+        if (dont_reconnect == true)
         {
-            ESP_LOGI(EVENT_HANDLER, "Retrying connection. Attempt #%u", attempts);
-            esp_wifi_connect(); // Retry connection.
+            dont_reconnect = false;
+            xEventGroupSetBits(wifi_evt_group, WIFI_DISCONNECTED_BIT);
         }
         else
         {
-            xEventGroupSetBits(evt_group, WIFI_FAIL_BIT); 
+            attempts++;
+            if (attempts <= MAX_RETRY_ATTEMPTS)
+            {
+                ESP_LOGI(WIFI_EVENT_HANDLER, "Retrying connection. Attempt #%u", attempts);
+                esp_wifi_connect();
+            }
+            else
+            {
+                xEventGroupSetBits(wifi_evt_group, WIFI_FAIL_BIT);
+            }
         }
         break;
+    case WIFI_EVENT_STA_STOP:
+        ESP_LOGI(WIFI_EVENT_HANDLER, "Stopped and freed station control block.");
+        break;
     default:
-        ESP_LOGI(EVENT_HANDLER, "Could not identify event.");
+        ESP_LOGE(WIFI_EVENT_HANDLER, "Could not identify event.");
         break;
     }
 }
@@ -85,13 +101,13 @@ void wifi_init_sta(void)
     esp_event_handler_instance_t instance_any_wifi_evt;
     esp_event_handler_instance_t instance_got_ip;
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-                                                    // Execute handler if any Wi-fi event is posted.
+                                                        // Execute handler if any Wi-fi event is posted.
                                                         ESP_EVENT_ANY_ID,
                                                         &wifi_event_handler,
                                                         NULL,
                                                         &instance_any_wifi_evt));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-                                                    // Execute handler if station received IP address from connected AP.
+                                                        // Execute handler if station received IP address from connected AP.
                                                         IP_EVENT_STA_GOT_IP,
                                                         &wifi_event_handler,
                                                         NULL,
@@ -114,9 +130,7 @@ void wifi_init_sta(void)
     wifi_config_t wifi_config = {
         .sta = {
             .ssid = SSID,
-            .password = PWD
-        }
-    };
+            .password = PWD}};
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start()); // Start Wi-Fi station.
