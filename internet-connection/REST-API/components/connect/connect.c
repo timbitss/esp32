@@ -1,47 +1,27 @@
 /**
- * @file main.c
+ * @file connect.c
  * @author Timothy Nguyen
- * @brief Example of connecting to Wi-Fi as a station.
+ * @brief Create Wi-Fi station and handle Wi-FI events.
  * @version 0.1
- * @date 2021-06-07
- * 
- *       Resource: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/wifi.html
+ * @date 2021-06-09
  */
 
 #include <stdio.h>
-#include "freeRTOS/FreeRTOS.h"
-#include "freeRTOS/task.h"
-#include "freertos/event_groups.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "connect.h"
 
-// Tags for logging data and information
+#define SSID CONFIG_WIFI_SSID    // SSID of Target AP to connect to.
+#define PWD CONFIG_WIFI_PASSWORD // Password of Target AP to connect to.
+
+// Tags for logging data and information.
+#define EVENT_HANDLER "WIFI_EVENT_HANDLER"
 #define WIFI_INIT "WIFI_INIT"
-#define APP_MAIN "APP_MAIN"
-#define EVENT_HANDLER "EVENT_HANDLER"
-#define APP_TASK "APP_TASK"
 
-/* SSID and PWD of target AP.
- * Configure definitions in menuconfig. */
-#define SSID CONFIG_WIFI_SSID
-#define PWD CONFIG_WIFI_PASSWORD
-
-// FreeRTOS event group bits/flags for communication between event handler and application task.
-#define WIFI_CONNECTED_BIT BIT0
-#define IP_GOT_IP_BIT BIT1
-#define WIFI_FAIL_BIT BIT2
-
-// Maximum number of attempts to connect to Wi-Fi before giving up.
-#define MAX_RETRY_ATTEMPTS 10
-
-// To store IPV4 address, netmask, and gateway address.
-esp_netif_ip_info_t ipv4_info;
-
-// Event group object for communication between event handler and application task.
-EventGroupHandle_t evt_group; 
+#define MAX_RETRY_ATTEMPTS 10 // Maximum number of attempts to connect to Wi-Fi before giving up.
 
 /**
  * @brief Event handler/call back registered for WIFI and IP events.
@@ -57,6 +37,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     switch (event_id)
     {
     case WIFI_EVENT_STA_START:
+        ESP_LOGI(EVENT_HANDLER, "Attempted to connect to AP, SSID: %s, PWD: %s", SSID, PWD);
         esp_wifi_connect(); 
         break;
     case WIFI_EVENT_STA_CONNECTED:
@@ -64,7 +45,6 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         attempts = 0;
         break;
     case IP_EVENT_STA_GOT_IP:
-        ipv4_info = ((ip_event_got_ip_t*)event_data)->ip_info;
         xEventGroupSetBits(evt_group, IP_GOT_IP_BIT);
         break;
     case WIFI_EVENT_STA_DISCONNECTED:
@@ -76,7 +56,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         }
         else
         {
-            xEventGroupSetBits(evt_group, WIFI_FAIL_BIT);
+            xEventGroupSetBits(evt_group, WIFI_FAIL_BIT); 
         }
         break;
     default:
@@ -86,50 +66,19 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 }
 
 /**
- * @brief Print information related to important events.
+ * @brief Initialize, configure, and start Wi-Fi station.
  * 
- * @param param 
+ *        Closely follows STA phases 1-3 in ESP32 Wi-Fi API Guide with exception of FreeRTOS event group.
  */
-static void app_task(void *param)
+void wifi_init_sta(void)
 {
-    while(1)
-    {
-        EventBits_t bits = xEventGroupWaitBits(evt_group, 
-                            WIFI_CONNECTED_BIT | IP_GOT_IP_BIT | WIFI_FAIL_BIT, // Bits to wait for.
-                            pdTRUE,                // Clear bits on exit if wait condition was met.
-                            pdFALSE,               // Wait for any bit to be sit in event group.
-                            pdMS_TO_TICKS(10000)); // Timeout period of 10 s.
+    // Create FreeRTOS event group for Wi-Fi events.
+    wifi_evt_group = xEventGroupCreate();
 
-        if(bits & WIFI_CONNECTED_BIT)
-        {
-            ESP_LOGI(APP_TASK, "ESP32 Station connected to AP, SSID: %s PWD: %s", SSID, PWD);
-        }
-        else if(bits & IP_GOT_IP_BIT)
-        {
-            ESP_LOGI(APP_TASK, "IPv4 address: " IPSTR, IP2STR(&ipv4_info.ip)); 
-        }
-        else if (bits & WIFI_FAIL_BIT)
-        {
-            ESP_LOGE(APP_TASK, "Could not connect to Wi-Fi.");
-        }
-        else
-        {
-            ESP_LOGE(APP_TASK, "Task timed out.");
-        }
-    }
-}    
-
-/**
- * @brief Initialize, configure, and start Wi-Fi.
- * 
- *        Closely follows STA phases 1-3 in ESP32 Wi-Fi API Guide.
- */
-static void wifi_init_sta(void)
-{
     // Create an LwIP core task and initialize LwIP-related work.
     ESP_ERROR_CHECK(esp_netif_init());
 
-    // Create the default event loop/task where events from the Wi-Fi driver and TCP stack are sent to.
+    // Create the default event loop/task where events from the Wi-Fi driver and TCP stack are posted to.
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     // Register event handlers to default event loop.
@@ -172,26 +121,4 @@ static void wifi_init_sta(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start()); // Start Wi-Fi station.
     ESP_LOGI(WIFI_INIT, "Initialized Wi-Fi.");
-}
-
-void app_main()
-{
-    // Initialize NVS, required for Wi-Fi driver.
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-    {
-        ESP_LOGI(APP_MAIN, "Erasing contents of NVS flash partition");
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-
-    // Create FreeRTOS event group.
-    evt_group = xEventGroupCreate();
-
-    // Initialize Wi-Fi station.
-    wifi_init_sta();
-
-    // Create application task.
-    xTaskCreatePinnedToCore(app_task, "APP TASK", 4 * 1024, NULL, 5, NULL, APP_CPU_NUM);
 }
