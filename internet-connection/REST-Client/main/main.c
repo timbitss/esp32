@@ -18,10 +18,10 @@
 #include "string.h"
 #include "esp_wifi.h"
 
-// URL/endpoint to get JSON string from.
+// URL/endpoint to get quote of the day from.
 #define REQUEST_URL "http://quotes.rest/qod?language=en"
 
-// Tags for logging data and information
+// Tags for logging data and information.
 #define MAIN_TASK "MAIN_TASK"
 #define APP_TASK "APP_TASK"
 #define PARSER "PARSER"
@@ -31,13 +31,11 @@
  * 
  * @param[in] json_string JSON string obtained from REST server.
  * @param[out] output Buffer to store quote of the day.
- * @returns esp_err_t ESP_OK if string was parsed successfuly.
- *                    ESP_xxx otherwise.  
  */
-esp_err_t get_qotd(const char *json_string, char *output)
+void get_qotd(const char *json_string, char *output)
 {
     cJSON *json_obj = cJSON_Parse(json_string);
-    esp_err_t err = ESP_OK;
+
     if (json_obj == NULL)
     {
         const char *error_ptr = cJSON_GetErrorPtr();
@@ -45,7 +43,6 @@ esp_err_t get_qotd(const char *json_string, char *output)
         {
             ESP_LOGE(PARSER, "Error before: %s\n", error_ptr);
         }
-        err = ESP_FAIL;
     }
     else
     {
@@ -65,44 +62,50 @@ esp_err_t get_qotd(const char *json_string, char *output)
                 else if (!cJSON_IsString(qotd))
                 {
                     ESP_LOGE(PARSER, "Qotd does not hold a a string.");
-                    err = ESP_ERR_NOT_FOUND;
                 }
                 else
                 {
                     ESP_LOGE(PARSER, "Payload buffer size must be greater than %zu", strlen(qotd->valuestring));
-                    err = ESP_ERR_NO_MEM;
                 }
             }
         }
         else
         {
             ESP_LOGE(PARSER, "Quotes item is not an array");
-            err = ESP_ERR_NOT_FOUND;
         }
     }
 
     cJSON_Delete(json_obj);
-    return err;
 }
 
 /**
- * @brief Get and print the quote of the day using a REST service.
+ * @brief Get quote of the day from a web server, then send 
  */
-void print_qotd(void)
+void send_sms_qotd(void)
 {
-    payload_config_t payload = {
+    rest_config_t rest_config = {
+        .HTTP_method = HTTP_METHOD_GET,
         .endpoint = REQUEST_URL,
         .parse_json = &get_qotd // Get QOTD from JSON string.
     };
-    rest_get_json(&payload);
+    int response_status = rest_execute(&rest_config);
 
-    if (payload.err == ESP_OK)
+    if (response_status == HTTP_OK)
     {
-        printf("Quote of the day: %s\n", payload.payload_str); // Print out results
+        rest_config.HTTP_method = HTTP_METHOD_POST; // Send SMS.
+        response_status = rest_execute(&rest_config);
+        if(response_status == HTTP_CREATED)
+        {
+            ESP_LOGI(APP_TASK, "Sent SMS message!");
+        }
+        else
+        {
+            ESP_LOGE(APP_TASK, "Could not send SMS message, status: %d", response_status);
+        }
     }
     else
     {
-        ESP_LOGE(APP_TASK, "Could not get quote of the day.");
+        ESP_LOGE(APP_TASK, "Could not get quote of the day, status: %d", response_status);
     }
 }
 
@@ -132,7 +135,10 @@ static void app_task(void *param)
         else if (bits & IP_GOT_IP_BIT)
         {
             ESP_LOGI(APP_TASK, "Got IPv4 address of AP.");
-            print_qotd();
+            rest_config_t rest_config;
+            rest_config.HTTP_method = HTTP_METHOD_POST; // Send SMS.
+            rest_execute(&rest_config);
+            //send_sms_qotd(); // ! DEBUGGING
             dont_reconnect = true;
             ESP_ERROR_CHECK(esp_wifi_disconnect()); 
         }

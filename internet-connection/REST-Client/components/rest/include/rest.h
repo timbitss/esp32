@@ -2,30 +2,58 @@
 #define _REST_H_
 
 #include "esp_err.h"
+#include "esp_http_client.h"
 
-#define PAYLOAD_SIZE 200  // Size of payload string
-#define ENDPOINT_SIZE 100 // Size of endpoint (URL)
+// Adjust buffer sizes based on application needs.
+#define HTTP_RESPONSE_SIZE 1024 * 2 // Size of HTTP response body buffer.
+#define PAYLOAD_SIZE 200            // Max size of payload string.
+#define ENDPOINT_SIZE 100           // Max size of endpoint string (URL).
 
 /**
- * @brief REST Client configuration settings and payload data.
+ * @brief HTTP status response codes.
+ */
+typedef enum
+{
+    // Successful status codes.
+    HTTP_OK = 200,
+    HTTP_CREATED = 201,
+
+    // Failure status codes.
+    HTTP_BAD_REQUEST = 400,
+    HTTP_UNAUTHORIZED = 401,
+    HTTP_FORBIDDEN = 403,
+    HTTP_NOT_FOUND = 404
+} HTTP_status_t;
+
+/**
+ * @brief Configuration settings and data for rest_api_config().
+ * 
+ * @note Setting HTTP_method member to HTTP_METHOD_GET will call parse_json().
+ *       Setting HTTP_method member to HTTP_METHOD_POST will send SMS message.
  */
 typedef struct
 {
-    // Configure prior to calling rest_get().
-    char endpoint[ENDPOINT_SIZE];                                   // URL to get JSON string from.
-    esp_err_t (*parse_json)(const char *json_string, char *output); // Application-specific JSON string parser.
+    esp_http_client_method_t HTTP_method;                      // HTTP method
+    char endpoint[ENDPOINT_SIZE];                              // Endpoint.
+    void (*parse_json)(const char *json_string, char *output); // Application-specific JSON string parser.
 
-    // Data obtained after calling rest_get() with structure.
-    char payload_str[PAYLOAD_SIZE];                                 // Payload string parsed from JSON string.
-    esp_err_t err;                                                  // Result of parsing JSON.
-} payload_config_t;
+    /* Payload string. 
+     * For GET method, payload string is parsed from received JSON string.
+     * For POST method, payload string is SMS message to send via Twilio REST API. */
+    char payload_str[PAYLOAD_SIZE]; 
+} rest_config_t;
 
 /**
- * @brief Get JSON string from web server and parse it.
+ * @brief Execute REST transaction.
  * 
- * @param[in,out] payload_config As an input, payload_config holds URL and application-specific parser function.
- *                               As an output, payload_config holds payload string and result of parsing JSON.
+ * @note GET transaction assumes parsing of JSON.
+ *       POST transaction assumes sending SMS via Twilio REST API.
+ * 
+ * @param[in,out] rest_config_t  Input: rest_config holds HTTP configuration settings.
+ *                               Output: rest_config will hold parsed string if HTTP GET request.
+ * 
+ * @return HTTP response status code.
  */
-void rest_get_json(payload_config_t *payload_config);
+int rest_execute(rest_config_t *rest_config);
 
 #endif

@@ -2,6 +2,6 @@
 idf_component_register(SRCS "rest.c"
                        INCLUDE_DIRS "include"
                        # list of components required by the public interface of this component
-                       REQUIRES mbedtls 
+                       REQUIRES mbedtls esp_http_client
                        # list of components required by source file 
                        PRIV_REQUIRES esp_http_client) 
