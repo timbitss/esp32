@@ -2,18 +2,18 @@ menu "Twilio Configurations"
 
 config TWILIO_SID
     string "Twilio SID"
-    default "AC45b994b2f69e10035b0943597334d5de"
+    default "xxxx"
 
 config TWILIO_AUTH_TOKEN
     string "Twilio authentification token"
-    default "86b20a6a152aeaf01e6baaf58b490f95"  
+    default "xxxx"  
 
 config FROM_PHONE_NUM
     string "Twilio phone number"
-    default "+18082013786"
+    default "+10000000000"
 
 config TO_PHONE_NUM
     string "Phone number to send message to"
-    default "+17788722708"
+    default "+10000000000"
 
 endmenu

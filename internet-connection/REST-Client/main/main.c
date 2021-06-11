@@ -92,9 +92,9 @@ void send_sms_qotd(void)
 
     if (response_status == HTTP_OK)
     {
-        rest_config.HTTP_method = HTTP_METHOD_POST; // Send SMS.
+        rest_config.HTTP_method = HTTP_METHOD_POST; // Send SMS using Twilio API.
         response_status = rest_execute(&rest_config);
-        if(response_status == HTTP_CREATED)
+        if (response_status == HTTP_CREATED)
         {
             ESP_LOGI(APP_TASK, "Sent SMS message!");
         }
@@ -119,14 +119,14 @@ static void app_task(void *param)
     while (true)
     {
         EventBits_t bits = xEventGroupWaitBits(wifi_evt_group,
-                                               // Bits to wait for.  
-                                               WIFI_CONNECTED_BIT | IP_GOT_IP_BIT | WIFI_FAIL_BIT | WIFI_DISCONNECTED_BIT, 
+                                               // Bits to wait for.
+                                               WIFI_CONNECTED_BIT | IP_GOT_IP_BIT | WIFI_FAIL_BIT | WIFI_DISCONNECTED_BIT,
                                                // Clear set bits on exit.
-                                               pdTRUE,                   
-                                               // Wait for any bit to be sit in event group.                                                  
-                                               pdFALSE,    
-                                               // Timeout period of 10 s.                                                                
-                                               pdMS_TO_TICKS(10000));                                                      
+                                               pdTRUE,
+                                               // Wait for any bit to be sit in event group.
+                                               pdFALSE,
+                                               // Timeout period of 10 s.
+                                               pdMS_TO_TICKS(10000));
 
         if (bits & WIFI_CONNECTED_BIT)
         {
@@ -135,19 +135,16 @@ static void app_task(void *param)
         else if (bits & IP_GOT_IP_BIT)
         {
             ESP_LOGI(APP_TASK, "Got IPv4 address of AP.");
-            rest_config_t rest_config;
-            rest_config.HTTP_method = HTTP_METHOD_POST; // Send SMS.
-            rest_execute(&rest_config);
-            //send_sms_qotd(); // ! DEBUGGING
+            send_sms_qotd();
             dont_reconnect = true;
-            ESP_ERROR_CHECK(esp_wifi_disconnect()); 
+            ESP_ERROR_CHECK(esp_wifi_disconnect());
         }
         else if (bits & WIFI_DISCONNECTED_BIT) // Successful esp_wifi_disconnect() call.
         {
             ESP_LOGI(APP_TASK, "ESP32 disconnected from Wi-Fi.");
-            ESP_ERROR_CHECK(esp_wifi_stop());  // Free up resources.
+            ESP_ERROR_CHECK(esp_wifi_stop()); // Free up resources.
             ESP_ERROR_CHECK(esp_wifi_deinit());
-            vTaskDelete(NULL); 
+            vTaskDelete(NULL);
         }
         else if (bits & WIFI_FAIL_BIT) // Bit only set after multiple reconnection attempts.
         {

@@ -5,7 +5,7 @@
  * @version 0.1
  * @date 2021-06-09
  * 
- *      Includes SMS messaging using Twilio.
+ *      Includes SMS messaging using Twilio REST API.
  */
 
 #include "stdio.h"
@@ -107,7 +107,7 @@ int rest_execute(rest_config_t *rest_config)
         client_config.url = rest_config->endpoint;
         client = esp_http_client_init(&client_config);
     }
-    else // POST request aka send SMS message.
+    else // POST request
     {
         client_config.method = HTTP_METHOD_POST;
         client_config.url = TWILIO_SMS_ENDPOINT;
@@ -117,10 +117,10 @@ int rest_execute(rest_config_t *rest_config)
         client = esp_http_client_init(&client_config);
 
         esp_http_client_set_header(client, "Content-Type", "application/x-www-form-urlencoded");
-        char post_buf[100] = {0};
-        sprintf(post_buf, "%s=%s&%s=%s&%s=%s", "Body", "Hard work pays off.", // ! Change body to payload_str after
-                                                "From", FROM_PHONE_NUM,
-                                                "To", TO_PHONE_NUM);
+        char post_buf[300] = {0};
+        sprintf(post_buf, "%s=%s&%s=%s&%s=%s", "Body", rest_config->payload_str,
+                "From", FROM_PHONE_NUM,
+                "To", TO_PHONE_NUM);
         esp_http_client_set_post_field(client, (const char *)post_buf, strlen(post_buf));
     }
 
