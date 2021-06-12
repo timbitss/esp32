@@ -1,11 +1,13 @@
 /**
  * @file rest.c
  * @author Timothy Nguyen
- * @brief REST Client API for ESP32.
+ * @brief REST API example.
  * @version 0.1
  * @date 2021-06-09
+ * @note Prior to usage, the ESP32 must be connected to Wi-FI as STA.
  * 
- *      Includes SMS messaging using Twilio REST API.
+ *       ESP32 is set up as an HTTP client in order to make REST transactions.
+ *       Includes SMS messaging using Twilio REST API.
  */
 
 #include "stdio.h"

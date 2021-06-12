@@ -1,13 +1,12 @@
 /**
  * @file server.c
  * @author Timothy Nguyen
- * @brief ESP32 as a light-weight HTTP web server.
+ * @brief ESP32 as a light-weight web server.
  * @version 0.1
  * @date 2021-06-11
- * @note Prior to usage, the ESP32 must be connected to Wi-FI as STA or be acting as an AP.
  * 
- *       GET request at /api/temperature returns temperature as JSON string.
- *       POST request at /api/led with "LED_switch":<bool> JSON item turns LED on or off.
+ *       GET request at /api/temperature returns temperature.
+ *       POST request at /api/led with "LED_switch":<bool> JSON item turns LED on and off.
  */
 
 #include "sys/param.h"
@@ -36,7 +35,7 @@ static esp_err_t root_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "URI %s was hit", req->uri);
 
-    // Send back file located in SPIFFS.
+    // Send back HTML file located in SPIFFS.
     const esp_vfs_spiffs_conf_t spiffs_conf =
         {
             .base_path = "/spiffs",  // ! File path prefix must be prepended if standard C library functions are used.
@@ -63,17 +62,10 @@ static esp_err_t root_handler(httpd_req_t *req)
     }
     else
     {
-        char *ext = strrchr(file_path, '.');
-        if(strcmp(ext,".css") == 0)
-        {
-            ESP_LOGI(TAG, "Setting mime type to css");
-            httpd_resp_set_type(req, "text/css");
-        }
-
         char line_buf[LINE_BUF_SIZE] = {0};
         while (fgets(line_buf, LINE_BUF_SIZE, fp) != NULL)
         {
-            httpd_resp_send_chunk(req, line_buf, HTTPD_RESP_USE_STRLEN); // Provide each line one by one.
+            httpd_resp_send_chunk(req, line_buf, HTTPD_RESP_USE_STRLEN); // Send each line one by one.
         }
         httpd_resp_send_chunk(req, NULL, 0);
         fclose(fp);
@@ -92,9 +84,8 @@ static esp_err_t root_handler(httpd_req_t *req)
 static esp_err_t temperature_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "URI %s was hit", req->uri);
-    char resp[50] = {0};
-    sprintf(resp, "{\"Temperature\":%.2f}", tmp102_get_temp()); // Format temperature as JSON string.
-    httpd_resp_set_type(req, "application/json");
+    char resp[20] = {0};
+    sprintf(resp, "Temperature: %.2f", tmp102_get_temp());
     httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
