@@ -3,6 +3,8 @@
 
 #include "esp_http_server.h"
 
+#define LED_SWITCH_NUM GPIO_NUM_15 // LED GPIO number referencing to LED_switch JSON key.
+
 /**
  * @brief Start web server.
  * 

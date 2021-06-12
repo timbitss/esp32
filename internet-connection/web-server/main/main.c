@@ -4,6 +4,9 @@
  * @brief ESP32 acting as a light-weight web server.
  * @version 0.1
  * @date 2021-06-11
+ * 
+ *       GET request at /api/temperature returns temperature.
+ *       POST request at /api/led with "LED_switch":<bool> JSON item turns LED on and off.
  */
 
 #include <stdio.h>
@@ -24,7 +27,7 @@
 #define GPIO_OUT_BIT_MASK (1ULL << GPIO_NUM_15)  // Bit mask of GPIO pins to use as output.
 
 /**
- * @brief Get quote of the day from a web server, then send 
+ * @brief Set up ESP32 as web server. 
  */
 void create_server(void)
 {

@@ -5,7 +5,8 @@
  * @version 0.1
  * @date 2021-06-11
  * 
- *      Server expects a single boolean JSON item named "LED_switch" if client posts to /temperature. 
+ *       GET request at /api/temperature returns temperature.
+ *       POST request at /api/led with "LED_switch":<bool> JSON item turns LED on and off.
  */
 
 #include "sys/param.h"
@@ -15,15 +16,17 @@
 #include "tmp102.h"
 #include "cJSON.h"
 #include "driver/gpio.h"
+#include "esp_spiffs.h"
 
 #define TAG "SERVER" // For logging data and information.
 
-#define BUF_SIZE 150 // Size of rx buffer for POST requests.
-
-#define LED_SWITCH_NUM GPIO_NUM_15 // LED GPIO number corresponding to LED_switch JSON key.
+// Configure size of buffers based on application needs:
+#define BUF_SIZE 150      // Size of rx buffer for POST requests.
+#define LINE_BUF_SIZE 256 // Size of buffer for reading each line of file.
+#define PATH_BUF_SIZE 600 // Size of path.
 
 /**
- * @brief Handler for GET requests at root endpoint with wildcard.
+ * @brief Handler for GET requests at root endpoint + wildcard.
  * 
  * @param req HTTP request data structure.
  * @return esp_err_t ESP error code.
@@ -31,11 +34,46 @@
 static esp_err_t root_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "URI %s was hit", req->uri);
-    const char resp[] = "Hello World";
-    httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+
+    // Send back HTML file located in SPIFFS.
+    const esp_vfs_spiffs_conf_t spiffs_conf =
+        {
+            .base_path = "/spiffs",  // ! File path prefix must be prepended if standard C library functions are used.
+            .partition_label = NULL, // Finds first SPIFFS partition label.
+            .max_files = 5,          // Max files open at the same time.
+            .format_if_mount_failed = true};
+    ESP_ERROR_CHECK(esp_vfs_spiffs_register(&spiffs_conf));
+
+    char file_path[PATH_BUF_SIZE] = {0};
+    if (strcmp(req->uri, "/") == 0)
+    {
+        sprintf(file_path, "/spiffs/index.html");
+    }
+    else
+    {
+        sprintf(file_path, "/spiffs%s", req->uri);
+    }
+
+    FILE *fp = fopen(file_path, "r");
+    if (fp == NULL)
+    {
+        ESP_LOGE(TAG, "File not found.");
+        httpd_resp_send_404(req);
+    }
+    else
+    {
+        char line_buf[LINE_BUF_SIZE] = {0};
+        while (fgets(line_buf, LINE_BUF_SIZE, fp) != NULL)
+        {
+            httpd_resp_send_chunk(req, line_buf, HTTPD_RESP_USE_STRLEN); // Send each line one by one.
+        }
+        httpd_resp_send_chunk(req, NULL, 0);
+        fclose(fp);
+    }
+
+    ESP_ERROR_CHECK(esp_vfs_spiffs_unregister(NULL));
     return ESP_OK;
 }
-
 
 /**
  * @brief Handler for GET requests at /temperature.
@@ -62,20 +100,21 @@ static esp_err_t led_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "URI %s was hit", req->uri);
     char rx_buf[BUF_SIZE] = {0};
-  
+
     // Will copy first BUF_SIZE - 1 characters if content_len > BUF_SIZE
     int ret;
     {
-        ret = httpd_req_recv(req, rx_buf, req->content_len); 
-    } while ( ret == HTTPD_SOCK_ERR_TIMEOUT ); // Retry if HTTP socket timed out or was interrupted.
-    
+        ret = httpd_req_recv(req, rx_buf, req->content_len);
+    }
+    while (ret == HTTPD_SOCK_ERR_TIMEOUT)
+        ; // Retry if HTTP socket timed out or was interrupted.
+
     // Set GPIO pin based on boolean value of "LED_switch" key
     cJSON *json = cJSON_Parse(rx_buf);
     const cJSON *led_switch = cJSON_GetObjectItemCaseSensitive(json, "LED_switch");
-    if(cJSON_IsBool(led_switch))
+    if (cJSON_IsBool(led_switch))
     {
         gpio_set_level(LED_SWITCH_NUM, cJSON_IsTrue(led_switch));
-        ESP_ERROR_CHECK(httpd_resp_set_status(req, "200 OK"));
         ESP_ERROR_CHECK(httpd_resp_send(req, NULL, 0)); // End transaction.
     }
     else
@@ -84,7 +123,7 @@ static esp_err_t led_handler(httpd_req_t *req)
         ESP_ERROR_CHECK(httpd_resp_set_status(req, "400 Bad Request"));
         ESP_ERROR_CHECK(httpd_resp_send(req, NULL, 0)); // End transaction.
     }
-  
+
     return ESP_OK;
 }
 
@@ -100,24 +139,23 @@ httpd_handle_t start_server(void)
     httpd_handle_t server = NULL;
     config.uri_match_fn = httpd_uri_match_wildcard;
 
-    // Register endpoint handler for GET requests at root endpoint with wildcard.
+    // Register endpoint handler for GET requests at root endpoint + wildcard.
     httpd_uri_t root_endpoint_config = {
         .uri = "/*",
         .method = HTTP_GET,
         .handler = root_handler,
-        .user_ctx = NULL
-    };
+        .user_ctx = NULL};
 
-    // Register endpoint handler for GET requests at /temperature endpoint.
+    // Register endpoint handler for GET requests at /api/temperature endpoint.
     httpd_uri_t temperature_endpoint_config = {
-        .uri = "/temperature",
+        .uri = "/api/temperature",
         .method = HTTP_GET,
         .handler = temperature_handler,
         .user_ctx = NULL};
 
-    // Register endpoint handler for POST requests at /led endpoint.
+    // Register endpoint handler for POST requests at /api/led endpoint.
     httpd_uri_t led_endpoint_config = {
-        .uri = "/led",
+        .uri = "/api/led",
         .method = HTTP_POST,
         .handler = led_handler,
         .user_ctx = NULL};
@@ -126,7 +164,7 @@ httpd_handle_t start_server(void)
     {
         httpd_register_uri_handler(server, &temperature_endpoint_config);
         httpd_register_uri_handler(server, &led_endpoint_config);
-        httpd_register_uri_handler(server, &root_endpoint_config);
+        httpd_register_uri_handler(server, &root_endpoint_config); // ! Register wildcard endpoint last.
     }
 
     ESP_LOGI(TAG, "Created web server and registered endpoints.");
