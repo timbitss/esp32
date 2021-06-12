@@ -1,7 +1,7 @@
 /**
  * @file rest.c
  * @author Timothy Nguyen
- * @brief REST API for ESP32.
+ * @brief REST Client API for ESP32.
  * @version 0.1
  * @date 2021-06-09
  * 
@@ -119,8 +119,8 @@ int rest_execute(rest_config_t *rest_config)
         esp_http_client_set_header(client, "Content-Type", "application/x-www-form-urlencoded");
         char post_buf[300] = {0};
         sprintf(post_buf, "%s=%s&%s=%s&%s=%s", "Body", rest_config->payload_str,
-                "From", FROM_PHONE_NUM,
-                "To", TO_PHONE_NUM);
+                                               "From", FROM_PHONE_NUM,
+                                               "To", TO_PHONE_NUM);
         esp_http_client_set_post_field(client, (const char *)post_buf, strlen(post_buf));
     }
 
