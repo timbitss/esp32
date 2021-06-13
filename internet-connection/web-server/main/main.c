@@ -7,6 +7,7 @@
  * 
  *       GET request at /api/temperature returns temperature.
  *       POST request at /api/led with "LED_switch":<bool> JSON item turns LED on and off.
+ *       GET request at root endpoint to view interactive webpage.
  */
 
 #include <stdio.h>

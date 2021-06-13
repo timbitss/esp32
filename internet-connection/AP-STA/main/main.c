@@ -1,12 +1,9 @@
 /**
  * @file main.c
  * @author Timothy Nguyen
- * @brief ESP32 acting as a light-weight web server.
+ * @brief ESP32 switching between AP and STA example.
  * @version 0.1
  * @date 2021-06-11
- * 
- *       GET request at /api/temperature returns temperature.
- *       POST request at /api/led with "LED_switch":<bool> JSON item turns LED on and off.
  */
 
 #include <stdio.h>
@@ -24,7 +21,7 @@
 
 #define TAG "APP" // Tag for logging data and information.
 
-#define GPIO_OUT_BIT_MASK (1ULL << GPIO_NUM_15)  // Bit mask of GPIO pins to use as output.
+#define GPIO_OUT_BIT_MASK (1ULL << GPIO_NUM_15) // Bit mask of GPIO pins to use as output.
 
 /**
  * @brief Set up ESP32 as web server. 
@@ -54,7 +51,7 @@ static void app_task(void *param)
     {
         EventBits_t bits = xEventGroupWaitBits(wifi_evt_group,
                                                // Bits to wait for.
-                                               WIFI_CONNECTED_BIT | IP_GOT_IP_BIT | WIFI_FAIL_BIT | WIFI_DISCONNECTED_BIT,
+        WIFI_CONNECTED_BIT | IP_GOT_IP_BIT | AP_STARTED_BIT | WIFI_FAIL_BIT | WIFI_DISCONNECTED_BIT,
                                                // Clear set bits on exit.
                                                pdTRUE,
                                                // Wait for any bit to be sit in event group.
@@ -73,11 +70,21 @@ static void app_task(void *param)
             dont_reconnect = true;
             ESP_ERROR_CHECK(esp_wifi_disconnect());
         }
+        else if (bits & AP_STARTED_BIT)
+        {
+            ESP_LOGI(TAG, "ESP32 AP has started.");
+            create_server();
+        }
+        else if (bits & AP_STA_CONNECTED_BIT)
+        {
+            ESP_LOGI(TAG, "A station has connected to the ESP32.");
+        }
         else if (bits & WIFI_DISCONNECTED_BIT) // Successful esp_wifi_disconnect() call.
         {
-            ESP_LOGI(TAG, "ESP32 disconnected from Wi-Fi.");
+            ESP_LOGI(TAG, "ESP32 station disconnected from Wi-Fi.");
             ESP_ERROR_CHECK(esp_wifi_stop()); // Free up resources.
             ESP_ERROR_CHECK(esp_wifi_deinit());
+            ESP_ERROR_CHECK(esp_netif_deinit());
             vTaskDelete(NULL);
         }
         else if (bits & WIFI_FAIL_BIT) // Bit only set after multiple reconnection attempts.
@@ -103,15 +110,7 @@ void app_main()
     io_config.intr_type = 0;
     ESP_ERROR_CHECK(gpio_config(&io_config));
 
-    // Initialize NVS, required for Wi-Fi driver.
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-    {
-        ESP_LOGI(TAG, "Erasing contents of NVS flash partition");
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+    // Check if Wi-Fi configured in flash, if so, configure Wi-FI as STA, otherwise as AP.
 
     // Initialize Wi-Fi station.
     wifi_init_sta();

@@ -121,7 +121,7 @@ void wifi_init_sta(void)
     }
 
     /* Create the Wi-Fi driver task and initialize the Wi-Fi driver with default configurations.
-     * NOTE: Function must be called before all other Wi-Fi API can be called. */
+     * NOTE: Function must be called before configuring Wi-Fi connection. */
     wifi_init_config_t wifi_init_config = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&wifi_init_config));
 

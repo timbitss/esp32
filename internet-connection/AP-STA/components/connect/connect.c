@@ -1,9 +1,9 @@
 /**
  * @file connect.c
  * @author Timothy Nguyen
- * @brief Create Wi-Fi station and handle Wi-FI events.
- * @version 0.1
- * @date 2021-06-09
+ * @brief Custom Wi-FI API.
+ * @version 0.2
+ * @date 2021-06-12
  */
 
 #include <stdio.h>
@@ -12,18 +12,33 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "connect.h"
+#include "nvs_flash.h"
+#include "freertos/semphr.h"
 
-#define SSID CONFIG_WIFI_SSID    // SSID of Target AP to connect to.
-#define PWD CONFIG_WIFI_PASSWORD // Password of Target AP to connect to.
+// Configure ESP32 AP credentials in menuconfig:
+#define ESP32AP_SSID CONFIG_ESP32AP_SSID // ESP32 AP SSID
+#define ESP32AP_PWD CONFIG_ESP32AP_PWD   // ESP32 AP Password
 
-// Tags for logging data and information.
+// Buffer sizes for SSID and password:
+#define SSID_BUF_SZ 25 // SSID buffer size.
+#define PWD_BUF_SZ 100 // Password buffer size.
+
+// Tags for logging data and information:
 #define WIFI_EVENT_HANDLER "WIFI_EVENT_HANDLER"
 #define WIFI_INIT "WIFI_INIT"
 
 #define MAX_RETRY_ATTEMPTS 10 // Maximum number of attempts to connect to Wi-Fi before giving up.
 
-// Event group object for communication between Wi-FI event handler and application task.
+// NVS Flash Definitions:
+#define WIFI_NAMESPACE "WIFI_CREDENTIALS" // NVS namespace associated with SSID and Password.
+#define SSID_KEY "SSID"                   // Key for SSID item.
+#define PWD_KEY "PASSWORD"                // Key for password item.
+
+// Event group object for communication between Wi-FI callback and application task.
 EventGroupHandle_t wifi_evt_group;
+
+// Semaphore to retry obtaining wifi credentials from NVS flash.
+SemaphoreHandle_t test_wifi_creds_sem;
 
 // Distinguish between connection failures and actual esp_wifi_disconnect() call.
 bool dont_reconnect = false;
@@ -42,7 +57,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     switch (event_id)
     {
     case WIFI_EVENT_STA_START:
-        ESP_LOGI(WIFI_EVENT_HANDLER, "Attempted to connect to AP, SSID: %s, PWD: %s", SSID, PWD);
+        ESP_LOGI(WIFI_EVENT_HANDLER, "Attempting to connect to AP");
         esp_wifi_connect();
         break;
     case WIFI_EVENT_STA_CONNECTED:
@@ -51,6 +66,13 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         break;
     case IP_EVENT_STA_GOT_IP:
         xEventGroupSetBits(wifi_evt_group, IP_GOT_IP_BIT);
+        break;
+    case WIFI_EVENT_AP_START:
+        xEventGroupSetBits(wifi_evt_group, AP_STARTED_BIT);
+        ESP_LOGI(WIFI_EVENT_HANDLER, "ESP32AP SSID: %s, PWD: %s", ESP32AP_SSID, ESP32AP_PWD);
+        break;
+    case WIFI_EVENT_AP_STACONNECTED:
+        xEventGroupSetBits(wifi_evt_group, AP_STA_CONNECTED_BIT);
         break;
     case WIFI_EVENT_STA_DISCONNECTED:
         if (dont_reconnect == true)
@@ -82,14 +104,25 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 }
 
 /**
- * @brief Initialize, configure, and start Wi-Fi station.
+ * @brief Task to connect to Wi-Fi.
  * 
- *        Closely follows STA phases 1-3 in ESP32 Wi-Fi API Guide with exception of FreeRTOS event group.
+ * @note  If the AP's SSID and password are not in stored in NVS Flash, set the ESP32 as an AP.
+ *        User must then connect to ESP32 and enter AP credentials by accessing IP address on a web browser.
  */
-void wifi_init_sta(void)
+void connect_wifi_task(void *params)
 {
     // Create FreeRTOS event group for Wi-Fi events.
     wifi_evt_group = xEventGroupCreate();
+
+    // Initialize NVS, required for Wi-Fi driver.
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        ESP_LOGI(WIFI_INIT, "Erasing contents of NVS flash partition");
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 
     // Create an LwIP core task and initialize LwIP-related work.
     ESP_ERROR_CHECK(esp_netif_init());
@@ -113,6 +146,72 @@ void wifi_init_sta(void)
                                                         NULL,
                                                         &instance_got_ip));
 
+    /* Create the Wi-Fi driver task and initialize the Wi-Fi driver with default configurations.
+     * NOTE: Function must be called before configuring Wi-Fi connection. */
+    wifi_init_config_t wifi_init_config = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&wifi_init_config));
+
+    test_wifi_creds_sem = xSemaphoreCreateBinary();
+    bool created_AP = false;
+
+    // Check if SSID and password are stored in NVS flash before connecting to Wi-Fi.
+    do
+    {
+        nvs_handle_t nvs_handle = NULL;
+        ESP_ERROR_CHECK(nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &nvs_handle));
+        char ssid_str[25] = {0};
+        char pwd_str[100] = {0};
+        esp_err_t err_ssid = nvs_get_str(nvs_handle, SSID_KEY, ssid_str, NULL);
+        esp_err_t err_pwd = nvs_get_str(nvs_handle, PWD_KEY, pwd_str, NULL);
+
+        if (err_ssid == ESP_OK && err_pwd == ESP_OK)
+        {
+            ESP_LOGI(WIFI_INIT, "Connecting to AP, SSID: %s, PWD: %s", ssid_str, pwd_str);
+            wifi_init_sta(ssid_str, pwd_str);
+            vSemaphoreDelete(test_wifi_creds_sem);
+            return;
+        }
+        else if(created_AP == false)
+        {
+            ESP_LOGI(WIFI_INIT, "Starting ESP32 as AP.");
+            wifi_init_ap();
+        }
+        else
+        {
+            ESP_LOGE(WIFI_INIT, "Incorrect Wi-Fi credentials entered, please try again.");
+        }
+    } while (xSemaphoreTake(test_wifi_creds_sem, portMAX_DELAY));
+}
+
+/**
+ * @brief Configure and start ESP32 AP.
+ */
+static wifi_init_ap()
+{
+    // Create default WIFI AP instance w/ TCP/IP stack.
+    esp_netif_t *esp_netif_inst = esp_netif_create_default_wifi_ap();
+    if (esp_netif_inst == NULL)
+    {
+        ESP_LOGE(WIFI_INIT, "Could not create default Wi-Fi AP instance.");
+    }
+
+    wifi_config_t wifi_config = {
+        .ap = {.ssid = "ESP32",
+               .password = "test",
+               .max_connection = 4,
+               .authmode = WIFI_AUTH_WPA_WPA2_PSK}};
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_AP, &wifi_config)); // Stored into NVS flash if enabled.
+    ESP_ERROR_CHECK(esp_wifi_start()); // Start Wi-Fi AP.
+    ESP_LOGI(WIFI_INIT, "Started Wi-Fi AP.");
+}
+
+/**
+ * @brief Configure and start Wi-Fi station.
+ */
+static void wifi_init_sta(const char *ap_ssid, const char *ap_pwd)
+{
+
     // Create default WIFI STA instance.
     esp_netif_t *esp_netif_inst = esp_netif_create_default_wifi_sta();
     if (esp_netif_inst == NULL)
@@ -120,19 +219,12 @@ void wifi_init_sta(void)
         ESP_LOGE(WIFI_INIT, "Could not create default Wi-Fi station instance.");
     }
 
-    /* Create the Wi-Fi driver task and initialize the Wi-Fi driver with default configurations.
-     * NOTE: Function must be called before all other Wi-Fi API can be called. */
-    wifi_init_config_t wifi_init_config = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&wifi_init_config));
-
-    /* If the Wi-Fi NVS flash is enabled by menuconfig, all Wi-Fi configurations are stored in flash.
-     * Therefore, you only need to call esp_wifi_get_xxx APIs to fetch the configuration stored in flash previously. */
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = SSID,
-            .password = PWD}};
+            .ssid = ap_ssid,
+            .password = ap_pwd}};
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config)); // Stored into NVS flash if enabled.
     ESP_ERROR_CHECK(esp_wifi_start()); // Start Wi-Fi station.
-    ESP_LOGI(WIFI_INIT, "Initialized Wi-Fi.");
+    ESP_LOGI(WIFI_INIT, "Started Wi-Fi station.");
 }

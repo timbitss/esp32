@@ -1,12 +1,15 @@
 /**
  * @file server.c
  * @author Timothy Nguyen
- * @brief ESP32 as a light-weight web server.
+ * @brief ESP32 as a light-weight HTTP web server.
  * @version 0.1
  * @date 2021-06-11
+ * @note Prior to usage, the ESP32 must be connected to Wi-FI as STA or be acting as an AP.
  * 
- *       GET request at /api/temperature returns temperature.
- *       POST request at /api/led with "LED_switch":<bool> JSON item turns LED on and off.
+ * If on a web brower:
+ *       - GET request at /api/temperature returns temperature as JSON string.
+ *       - POST request at /api/led with "LED_switch":<bool> JSON item turns LED on or off.
+ *       - GET request at the root endpoint loads up an interactive webpage.
  */
 
 #include "sys/param.h"
@@ -17,6 +20,7 @@
 #include "cJSON.h"
 #include "driver/gpio.h"
 #include "esp_spiffs.h"
+#include "connect.h"
 
 #define TAG "SERVER" // For logging data and information.
 
@@ -35,10 +39,10 @@ static esp_err_t root_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "URI %s was hit", req->uri);
 
-    // Send back HTML file located in SPIFFS.
+    // Send back file located in SPIFFS.
     const esp_vfs_spiffs_conf_t spiffs_conf =
         {
-            .base_path = "/spiffs",  // ! File path prefix must be prepended if standard C library functions are used.
+            .base_path = "/spiffs",  // ! File path prefix must be prepended if stdlib functions are used.
             .partition_label = NULL, // Finds first SPIFFS partition label.
             .max_files = 5,          // Max files open at the same time.
             .format_if_mount_failed = true};
@@ -62,16 +66,39 @@ static esp_err_t root_handler(httpd_req_t *req)
     }
     else
     {
+        char *ext = strrchr(file_path, '.');
+        if(strcmp(ext,".css") == 0)
+        {
+            ESP_LOGI(TAG, "Setting mime type to css");
+            httpd_resp_set_type(req, "text/css");
+        }
+
         char line_buf[LINE_BUF_SIZE] = {0};
         while (fgets(line_buf, LINE_BUF_SIZE, fp) != NULL)
         {
-            httpd_resp_send_chunk(req, line_buf, HTTPD_RESP_USE_STRLEN); // Send each line one by one.
+            httpd_resp_send_chunk(req, line_buf, HTTPD_RESP_USE_STRLEN); // Provide each line one by one.
         }
         httpd_resp_send_chunk(req, NULL, 0);
         fclose(fp);
     }
 
     ESP_ERROR_CHECK(esp_vfs_spiffs_unregister(NULL));
+    return ESP_OK;
+}
+
+/**
+ * @brief Handler for POST requests at /setwifi.
+ * 
+ * @param req HTTP request data structure.
+ * @return esp_err_t ESP error code.
+ */
+static esp_err_t set_wifi_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "URI %s was hit", req->uri);
+    
+    // TODO: Test if AP works. Then write code to extract SSID and password from string, then place in NVS flash (set and commit).
+  
+    xSemaphoreGive(test_wifi_creds_sem); // Signal connect_wifi_task to retry Wi-Fi connection.
     return ESP_OK;
 }
 
@@ -84,14 +111,17 @@ static esp_err_t root_handler(httpd_req_t *req)
 static esp_err_t temperature_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "URI %s was hit", req->uri);
-    char resp[20] = {0};
-    sprintf(resp, "Temperature: %.2f", tmp102_get_temp());
+
+    // Send back temperature as JSON string.
+    char resp[50] = {0};
+    sprintf(resp, "{\"Temperature\":%.2f}", tmp102_get_temp()); // Format temperature as JSON string.
+    httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
 /**
- * @brief Handler for POST requests at /led
+ * @brief Handler for POST requests at /led.
  * 
  * @param req HTTP request data structure.
  * @return esp_err_t ESP error code.
@@ -99,17 +129,14 @@ static esp_err_t temperature_handler(httpd_req_t *req)
 static esp_err_t led_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "URI %s was hit", req->uri);
-    char rx_buf[BUF_SIZE] = {0};
 
-    // Will copy first BUF_SIZE - 1 characters if content_len > BUF_SIZE
+    // Set GPIO pin based on boolean value of "LED_switch" key.
+    char rx_buf[BUF_SIZE] = {0};
     int ret;
     {
         ret = httpd_req_recv(req, rx_buf, req->content_len);
-    }
-    while (ret == HTTPD_SOCK_ERR_TIMEOUT)
-        ; // Retry if HTTP socket timed out or was interrupted.
+    } while (ret == HTTPD_SOCK_ERR_TIMEOUT); 
 
-    // Set GPIO pin based on boolean value of "LED_switch" key
     cJSON *json = cJSON_Parse(rx_buf);
     const cJSON *led_switch = cJSON_GetObjectItemCaseSensitive(json, "LED_switch");
     if (cJSON_IsBool(led_switch))
@@ -131,13 +158,20 @@ static esp_err_t led_handler(httpd_req_t *req)
  * @brief Registers endpoint handlers and starts web server.
  * 
  * @return httpd_handle_t Handler to HTTP server instance.
- *                        If server failed to start, handler returned will be NULL.
+ *                        NULL if web server failed to start.
  */
 httpd_handle_t start_server(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     httpd_handle_t server = NULL;
     config.uri_match_fn = httpd_uri_match_wildcard;
+
+    // Register endpoint handler for POST requests at /setwifi endpoint.
+    httpd_uri_t setwifi_endpoint_config = {
+        .uri = "/setwifi",
+        .method = HTTP_POST,
+        .handler = set_wifi_handler,
+        .user_ctx = NULL};
 
     // Register endpoint handler for GET requests at root endpoint + wildcard.
     httpd_uri_t root_endpoint_config = {
@@ -162,6 +196,7 @@ httpd_handle_t start_server(void)
 
     if (httpd_start(&server, &config) == ESP_OK)
     {
+        httpd_register_uri_handler(server, &setwifi_endpoint_config);
         httpd_register_uri_handler(server, &temperature_endpoint_config);
         httpd_register_uri_handler(server, &led_endpoint_config);
         httpd_register_uri_handler(server, &root_endpoint_config); // ! Register wildcard endpoint last.
