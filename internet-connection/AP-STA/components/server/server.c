@@ -42,7 +42,7 @@ static esp_err_t root_handler(httpd_req_t *req)
     // Send back file located in SPIFFS.
     const esp_vfs_spiffs_conf_t spiffs_conf =
         {
-            .base_path = "/spiffs",  // ! File path prefix must be prepended if stdlib functions are used.
+            .base_path = "/spiffs",  // File path prefix must be prepended if stdlib functions are used.
             .partition_label = NULL, // Finds first SPIFFS partition label.
             .max_files = 5,          // Max files open at the same time.
             .format_if_mount_failed = true};
@@ -96,7 +96,9 @@ static esp_err_t set_wifi_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "URI %s was hit", req->uri);
     
-    // TODO: Test if AP works. Then write code to extract SSID and password from string, then place in NVS flash (set and commit).
+    // TODO: Test if AP works. 
+    // TODO: Then write code to extract SSID and password from string, then place in NVS flash (set and commit).
+    // TODO: Add redirection.
   
     xSemaphoreGive(test_wifi_creds_sem); // Signal connect_wifi_task to retry Wi-Fi connection.
     return ESP_OK;

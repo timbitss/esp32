@@ -19,8 +19,13 @@ void tmp102_init(void);
  * 
  * @note tmp102_init() must be called once prior to calling this function.
  * 
- * @return float Temperature in degrees celsius.
+ * @return float: Temperature in degrees celsius.
  */
-float tmp102_get_temp();
+float tmp102_get_temp(void);
+
+/**
+ * @brief Delete read_temp_task.
+ */
+void tmp102_stop(void);
 
 #endif

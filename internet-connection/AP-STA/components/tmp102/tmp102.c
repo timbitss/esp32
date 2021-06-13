@@ -35,6 +35,8 @@
 
 static float temperature_c = 0; // Holds temperature in degrees celsius for get_temp().
 
+static TaskHandle_t read_temp_task_handle; // Task handler for read_temp_task.
+
 /**
  * @brief Get the temperature.
  *        
@@ -109,5 +111,16 @@ static void i2c_read_temp_task(void *args)
         temperature_c = (data * TEMP_RES);
         // ESP_LOGI(TEMP_TASK, "Temp (Celsius): %f", temperature_c);
         vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+/**
+ * @brief Delete read_temp_task.
+ */
+void tmp102_stop(void)
+{
+    if (read_temp_task_handle != NULL)
+    {
+        vTaskDelete(read_temp_task_handle);
     }
 }

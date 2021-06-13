@@ -73,7 +73,8 @@ static void app_task(void *param)
         else if (bits & AP_STARTED_BIT)
         {
             ESP_LOGI(TAG, "ESP32 AP has started.");
-            create_server();
+            ESP_LOGI(TAG, "Please connect to ESP32 and use web browser to set Wi-Fi credentials.");
+            create_server(); // TODO: Handle create_server() calls.
         }
         else if (bits & AP_STA_CONNECTED_BIT)
         {
@@ -85,6 +86,7 @@ static void app_task(void *param)
             ESP_ERROR_CHECK(esp_wifi_stop()); // Free up resources.
             ESP_ERROR_CHECK(esp_wifi_deinit());
             ESP_ERROR_CHECK(esp_netif_deinit());
+            tmp102_stop();
             vTaskDelete(NULL);
         }
         else if (bits & WIFI_FAIL_BIT) // Bit only set after multiple reconnection attempts.
@@ -110,10 +112,8 @@ void app_main()
     io_config.intr_type = 0;
     ESP_ERROR_CHECK(gpio_config(&io_config));
 
-    // Check if Wi-Fi configured in flash, if so, configure Wi-FI as STA, otherwise as AP.
-
-    // Initialize Wi-Fi station.
-    wifi_init_sta();
+    // Connect to Wi-Fi.
+    connect_to_wifi();
 
     // Initialize TMP102 temperature sensor driver.
     tmp102_init();

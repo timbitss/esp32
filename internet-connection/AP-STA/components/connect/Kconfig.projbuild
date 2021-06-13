@@ -1,11 +1,11 @@
-menu "WIFI CONNECT"
+menu "ESP32 as soft AP credentials"
 
-config WIFI_SSID
-    string "SSID"
-    default "my ssid"
+config ESP32AP_SSID
+    string "ESP32 as soft-AP SSID"
+    default "xxxxx"
 
-config WIFI_PASSWORD
-    string "PASSWORD"
-    default "my password"  
+config ESP32AP_PWD
+    string "ESP32 as soft-AP password"
+    default "xxxxx"  
 
 endmenu

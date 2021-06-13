@@ -23,4 +23,11 @@ extern SemaphoreHandle_t test_wifi_creds_sem;
  *  Application must set dont_reconnect to true before calling esp_wifi_disconnect() */
 extern bool dont_reconnect;
 
+/**
+ * @brief Connect to Wi-Fi.
+ * 
+ *        Starts connect_wifi task.
+ */
+void connect_to_wifi();
+
 #endif
