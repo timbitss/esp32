@@ -42,7 +42,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     switch (event_id)
     {
     case WIFI_EVENT_STA_START:
-        ESP_LOGI(WIFI_EVENT_HANDLER, "Attempted to connect to AP, SSID: %s, PWD: %s", SSID, PWD);
+        ESP_LOGI(WIFI_EVENT_HANDLER, "Attempting to connect to AP, SSID: %s, PWD: %s", SSID, PWD);
         esp_wifi_connect();
         break;
     case WIFI_EVENT_STA_CONNECTED:

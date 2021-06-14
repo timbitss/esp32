@@ -4,6 +4,11 @@
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
 
+// Storage of target AP's SSID and password in NVS flash:
+#define WIFI_NAMESPACE "WIFI_CREDS"       // NVS namespace associated with SSID and Password.
+#define SSID_KEY "SSID"                   // Key for SSID item.
+#define PWD_KEY "PASSWORD"                // Key for password item.
+
 /* Event group bits/flags that are set when an important Wi-Fi event has occurred.
  * Handle events in user application */
 #define WIFI_CONNECTED_BIT BIT0    // Connected to Wi-Fi.
@@ -19,15 +24,16 @@ extern EventGroupHandle_t wifi_evt_group;
 // Semaphore to retry obtaining wifi credentials from NVS flash.
 extern SemaphoreHandle_t test_wifi_creds_sem;
 
-/*  To distinguish between connection failures and actual esp_wifi_disconnect() call.
- *  Application must set dont_reconnect to true before calling esp_wifi_disconnect() */
-extern bool dont_reconnect;
-
 /**
  * @brief Connect to Wi-Fi.
  * 
  *        Starts connect_wifi task.
  */
 void connect_to_wifi();
+
+/**
+ * @brief Disconnect from Wi-Fi and free up resources.
+ */
+void disconnect_from_wifi();
 
 #endif

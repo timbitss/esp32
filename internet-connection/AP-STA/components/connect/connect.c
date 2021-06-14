@@ -24,15 +24,10 @@
 
 // Adjust buffer sizes according to application needs:
 #define SSID_BUF_SZ 25                 // SSID buffer size.
-#define PWD_BUF_SZ 100                 // Password buffer size.
+#define PWD_BUF_SZ 25                 // Password buffer size.
 #define CONNECT_WIFI_STACK_SZ 1024 * 4 // Connect_wifi_task stack size.
 
 #define MAX_RETRY_ATTEMPTS 10 // Maximum number of attempts to connect to Wi-Fi before giving up.
-
-// NVS Flash Definitions:
-#define WIFI_NAMESPACE "WIFI_CREDS" // NVS namespace associated with SSID and Password.
-#define SSID_KEY "SSID"                   // Key for SSID item.
-#define PWD_KEY "PASSWORD"                // Key for password item.
 
 // Tags for logging data and information:
 #define WIFI_EVENT_HANDLER "WIFI_EVENT_HANDLER"
@@ -126,12 +121,15 @@ static void wifi_init_ap()
                .authmode = WIFI_AUTH_WPA_WPA2_PSK}};
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_AP, &wifi_config)); // Stored into NVS flash if enabled.
-    ESP_ERROR_CHECK(esp_wifi_start());                                  // ! Start Wi-Fi AP.
+    ESP_ERROR_CHECK(esp_wifi_start());                                  
     ESP_LOGI(WIFI_INIT, "Started Wi-Fi AP.");
 }
 
 /**
  * @brief Configure and start ESP32 as Wi-Fi station.
+ * 
+ * @param ap_ssid SSID of target AP.
+ * @param ap_pwd Password of target AP. 
  */
 static void wifi_init_sta(const char *ap_ssid, const char *ap_pwd)
 {
@@ -142,10 +140,12 @@ static void wifi_init_sta(const char *ap_ssid, const char *ap_pwd)
     {
         ESP_LOGE(WIFI_INIT, "Could not create default Wi-Fi station instance.");
     }
-
+    
     wifi_config_t wifi_config;
-    strcpy((char *)wifi_config.ap.ssid, ap_ssid);
-    strcpy((char *)wifi_config.ap.password, ap_pwd);
+    memset(&wifi_config, 0, sizeof(wifi_config));
+    strncpy((char*)wifi_config.sta.ssid, ap_ssid, sizeof(wifi_config.sta.ssid));
+    strncpy((char*)wifi_config.sta.password, ap_pwd, sizeof(wifi_config.sta.password));
+    ESP_LOGI(WIFI_INIT, "Test: %s %s", wifi_config.sta.ssid, wifi_config.sta.password);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config)); // Stored into NVS flash if enabled.
     ESP_ERROR_CHECK(esp_wifi_start());                                   // Start Wi-Fi station.
@@ -160,8 +160,6 @@ static void wifi_init_sta(const char *ap_ssid, const char *ap_pwd)
  */
 static void connect_wifi_task(void *params)
 {
-    // Create FreeRTOS event group for Wi-Fi events.
-    wifi_evt_group = xEventGroupCreate();
 
     // Initialize NVS, required for Wi-Fi driver.
     esp_err_t ret = nvs_flash_init();
@@ -208,17 +206,21 @@ static void connect_wifi_task(void *params)
     {
         nvs_handle_t nvs_handle = 0;
         ESP_ERROR_CHECK(nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &nvs_handle));
-        char ssid_str[25] = {0};
-        char pwd_str[100] = {0};
-        esp_err_t err_ssid = nvs_get_str(nvs_handle, SSID_KEY, ssid_str, NULL);
-        esp_err_t err_pwd = nvs_get_str(nvs_handle, PWD_KEY, pwd_str, NULL);
+        char ssid_str[SSID_BUF_SZ] = {0};
+        char pwd_str[PWD_BUF_SZ] = {0};
+        size_t ssid_sz = SSID_BUF_SZ;
+        size_t pwd_sz = PWD_BUF_SZ;
+        esp_err_t err_ssid = nvs_get_str(nvs_handle, SSID_KEY, ssid_str, &ssid_sz);
+        esp_err_t err_pwd = nvs_get_str(nvs_handle, PWD_KEY, pwd_str, &pwd_sz);
+        nvs_close(nvs_handle);
 
         if (err_ssid == ESP_OK && err_pwd == ESP_OK)
         {
-            ESP_LOGI(WIFI_INIT, "Connecting to AP, SSID: %s, PWD: %s", ssid_str, pwd_str);
+            ESP_LOGI(WIFI_INIT, "Target AP credentials received. \
+                                    Attempting to connect to SSID: %s, PWD: %s", ssid_str, pwd_str);
             wifi_init_sta(ssid_str, pwd_str);
-            vSemaphoreDelete(test_wifi_creds_sem);
-            return;
+            vSemaphoreDelete(test_wifi_creds_sem); 
+            vTaskDelete(NULL);
         }
         else if (created_AP == false)
         {
@@ -228,19 +230,30 @@ static void connect_wifi_task(void *params)
         }
         else
         {
-            ESP_LOGE(WIFI_INIT, "Incorrect Wi-Fi credentials entered, please try again.");
+            ESP_LOGE(WIFI_INIT, "%s", esp_err_to_name(err_ssid));
+            ESP_LOGE(WIFI_INIT, "%s", esp_err_to_name(err_pwd));
         }
     } while (xSemaphoreTake(test_wifi_creds_sem, portMAX_DELAY));
-
-    vTaskDelete(NULL);
 }
 
 /**
  * @brief Connect to wi-fi.
  * 
- *        Starts connect_wifi task.
+ *        Creates Wi-Fi event group and starts connect_wifi task.
  */
 void connect_to_wifi()
 {
     xTaskCreatePinnedToCore(connect_wifi_task, "CONNECT WIFI", CONNECT_WIFI_STACK_SZ, NULL, 5, NULL, APP_CPU_NUM);
+}
+
+/**
+ * @brief Stop Wi-Fi connection and free up resources.
+ */
+void disconnect_from_wifi()
+{
+    dont_reconnect = true; // Signals to wifi_event_handler that user called for wifi disconnection.
+    esp_wifi_disconnect();
+    esp_wifi_stop(); 
+    esp_wifi_deinit();
+    esp_netif_deinit();
 }

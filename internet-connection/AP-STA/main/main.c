@@ -4,6 +4,9 @@
  * @brief ESP32 switching between AP and STA example.
  * @version 0.1
  * @date 2021-06-11
+ * 
+ *       If the AP's SSID and password are not in stored in NVS Flash, the program sets the ESP32 as an AP.
+ *       The user must then connect to the ESP32 and enter AP credentials through a web browser.
  */
 
 #include <stdio.h>
@@ -24,39 +27,24 @@
 #define GPIO_OUT_BIT_MASK (1ULL << GPIO_NUM_15) // Bit mask of GPIO pins to use as output.
 
 /**
- * @brief Set up ESP32 as web server. 
- */
-void create_server(void)
-{
-    httpd_handle_t server = start_server();
-    if (server == NULL)
-    {
-        ESP_LOGE(TAG, "Could not create server.");
-    }
-    else
-    {
-        vTaskDelay(pdMS_TO_TICKS(600 * 1000)); // Open web server for 10 minutes before closing.
-        stop_server(server);
-    }
-}
-
-/**
  * @brief Application task for Wi-Fi applications.
  * 
  * @param param Optional parameters as void ptr.
  */
 static void app_task(void *param)
 {
+    wifi_evt_group = xEventGroupCreate();
+    bool created_HTTP_server();
     while (true)
     {
         EventBits_t bits = xEventGroupWaitBits(wifi_evt_group,
                                                // Bits to wait for.
-        WIFI_CONNECTED_BIT | IP_GOT_IP_BIT | AP_STARTED_BIT | WIFI_FAIL_BIT | WIFI_DISCONNECTED_BIT,
+        WIFI_CONNECTED_BIT | IP_GOT_IP_BIT | AP_STARTED_BIT | WIFI_FAIL_BIT | WIFI_DISCONNECTED_BIT | AP_STA_CONNECTED_BIT,
                                                // Clear set bits on exit.
                                                pdTRUE,
                                                // Wait for any bit to be sit in event group.
                                                pdFALSE,
-                                               // Timeout period of 10 s.
+                                               // Time out after 10 seconds.
                                                pdMS_TO_TICKS(10000));
 
         if (bits & WIFI_CONNECTED_BIT)
@@ -66,15 +54,13 @@ static void app_task(void *param)
         else if (bits & IP_GOT_IP_BIT)
         {
             ESP_LOGI(TAG, "Got IPv4 address of AP.");
-            create_server();
-            dont_reconnect = true;
-            ESP_ERROR_CHECK(esp_wifi_disconnect());
+            http_start_server();
         }
         else if (bits & AP_STARTED_BIT)
         {
+            http_start_server();
             ESP_LOGI(TAG, "ESP32 AP has started.");
             ESP_LOGI(TAG, "Please connect to ESP32 and use web browser to set Wi-Fi credentials.");
-            create_server(); // TODO: Handle create_server() calls.
         }
         else if (bits & AP_STA_CONNECTED_BIT)
         {
@@ -83,15 +69,13 @@ static void app_task(void *param)
         else if (bits & WIFI_DISCONNECTED_BIT) // Successful esp_wifi_disconnect() call.
         {
             ESP_LOGI(TAG, "ESP32 station disconnected from Wi-Fi.");
-            ESP_ERROR_CHECK(esp_wifi_stop()); // Free up resources.
-            ESP_ERROR_CHECK(esp_wifi_deinit());
-            ESP_ERROR_CHECK(esp_netif_deinit());
             tmp102_stop();
             vTaskDelete(NULL);
         }
         else if (bits & WIFI_FAIL_BIT) // Bit only set after multiple reconnection attempts.
         {
             ESP_LOGE(TAG, "Could not connect to Wi-Fi.");
+            disconnect_from_wifi();
             vTaskDelete(NULL);
         }
         else
@@ -112,12 +96,13 @@ void app_main()
     io_config.intr_type = 0;
     ESP_ERROR_CHECK(gpio_config(&io_config));
 
-    // Connect to Wi-Fi.
-    connect_to_wifi();
+    // Create application task.
+    xTaskCreatePinnedToCore(app_task, "APP TASK", 4 * 1024, NULL, 5, NULL, APP_CPU_NUM);
 
     // Initialize TMP102 temperature sensor driver.
     tmp102_init();
 
-    // Create application task.
-    xTaskCreatePinnedToCore(app_task, "APP TASK", 4 * 1024, NULL, 5, NULL, APP_CPU_NUM);
+    // Connect to Wi-Fi.
+    connect_to_wifi();
 }
+

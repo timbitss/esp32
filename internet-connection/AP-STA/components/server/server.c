@@ -4,12 +4,7 @@
  * @brief ESP32 as a light-weight HTTP web server.
  * @version 0.1
  * @date 2021-06-11
- * @note Prior to usage, the ESP32 must be connected to Wi-FI as STA or be acting as an AP.
- * 
- * If on a web brower:
- *       - GET request at /api/temperature returns temperature as JSON string.
- *       - POST request at /api/led with "LED_switch":<bool> JSON item turns LED on or off.
- *       - GET request at the root endpoint loads up an interactive webpage.
+ * @note The ESP32 must be connected to Wi-FI as STA or be acting as an AP to function as a web server.
  */
 
 #include "sys/param.h"
@@ -21,6 +16,7 @@
 #include "driver/gpio.h"
 #include "esp_spiffs.h"
 #include "connect.h"
+#include "nvs_flash.h"
 
 #define TAG "SERVER" // For logging data and information.
 
@@ -28,6 +24,9 @@
 #define BUF_SIZE 150      // Size of rx buffer for POST requests.
 #define LINE_BUF_SIZE 256 // Size of buffer for reading each line of file.
 #define PATH_BUF_SIZE 600 // Size of path.
+
+// Handler used in http_stop_server() to stop server.
+httpd_handle_t server;
 
 /**
  * @brief Handler for GET requests at root endpoint + wildcard.
@@ -67,7 +66,7 @@ static esp_err_t root_handler(httpd_req_t *req)
     else
     {
         char *ext = strrchr(file_path, '.');
-        if(strcmp(ext,".css") == 0)
+        if (strcmp(ext, ".css") == 0)
         {
             ESP_LOGI(TAG, "Setting mime type to css");
             httpd_resp_set_type(req, "text/css");
@@ -95,11 +94,38 @@ static esp_err_t root_handler(httpd_req_t *req)
 static esp_err_t set_wifi_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "URI %s was hit", req->uri);
-    
-    // TODO: Test if AP works. 
-    // TODO: Then write code to extract SSID and password from string, then place in NVS flash (set and commit).
-    // TODO: Add redirection.
-  
+
+    /* Parse AP SSID and password from request body.
+     * SSID=<ssid>
+     * PASSWORD=<password> */
+    char rx_buf[300] = {0};
+    int ret;
+    do
+    {
+        ret = httpd_req_recv(req, rx_buf, 300);
+    } while (ret == HTTPD_SOCK_ERR_TIMEOUT);
+
+    printf("%s", rx_buf);
+    char *save_ptr = NULL;
+    const char *ssid = strtok_r(rx_buf, "\r\n", &save_ptr); // Get first line.
+    const char *pass = strtok_r(NULL, "\r\n", &save_ptr);   // Get second line.
+    ssid = strchr(ssid, '=') + 1;
+    pass = strchr(pass, '=') + 1;
+
+    printf("%s %s", ssid, pass);
+
+    nvs_handle_t nvs_handle;
+    ESP_ERROR_CHECK(nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &nvs_handle));
+    ESP_ERROR_CHECK(nvs_set_str(nvs_handle, SSID_KEY, ssid));
+    ESP_ERROR_CHECK(nvs_set_str(nvs_handle, PWD_KEY, pass));
+    ESP_ERROR_CHECK(nvs_commit(nvs_handle));
+    nvs_close(nvs_handle);
+
+    // Redirect client to a confirmation page.
+    httpd_resp_set_status(req, "303");
+    httpd_resp_set_hdr(req, "Location", "/wifi-set.html");
+    httpd_resp_send(req, NULL, 0);
+
     xSemaphoreGive(test_wifi_creds_sem); // Signal connect_wifi_task to retry Wi-Fi connection.
     return ESP_OK;
 }
@@ -137,7 +163,9 @@ static esp_err_t led_handler(httpd_req_t *req)
     int ret;
     {
         ret = httpd_req_recv(req, rx_buf, req->content_len);
-    } while (ret == HTTPD_SOCK_ERR_TIMEOUT); 
+    }
+    while (ret == HTTPD_SOCK_ERR_TIMEOUT)
+        ;
 
     cJSON *json = cJSON_Parse(rx_buf);
     const cJSON *led_switch = cJSON_GetObjectItemCaseSensitive(json, "LED_switch");
@@ -158,19 +186,16 @@ static esp_err_t led_handler(httpd_req_t *req)
 
 /**
  * @brief Registers endpoint handlers and starts web server.
- * 
- * @return httpd_handle_t Handler to HTTP server instance.
- *                        NULL if web server failed to start.
  */
-httpd_handle_t start_server(void)
+void http_start_server(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     httpd_handle_t server = NULL;
     config.uri_match_fn = httpd_uri_match_wildcard;
 
-    // Register endpoint handler for POST requests at /setwifi endpoint.
+    // Register endpoint handler for POST requests at /api/setwifi endpoint.
     httpd_uri_t setwifi_endpoint_config = {
-        .uri = "/setwifi",
+        .uri = "/api/setwifi",
         .method = HTTP_POST,
         .handler = set_wifi_handler,
         .user_ctx = NULL};
@@ -196,26 +221,28 @@ httpd_handle_t start_server(void)
         .handler = led_handler,
         .user_ctx = NULL};
 
-    if (httpd_start(&server, &config) == ESP_OK)
+    esp_err_t err = httpd_start(&server, &config);
+    if (err == ESP_OK)
     {
         httpd_register_uri_handler(server, &setwifi_endpoint_config);
         httpd_register_uri_handler(server, &temperature_endpoint_config);
         httpd_register_uri_handler(server, &led_endpoint_config);
         httpd_register_uri_handler(server, &root_endpoint_config); // ! Register wildcard endpoint last.
     }
+    else
+    {
+        ESP_LOGE(TAG, "%s", esp_err_to_name(err));
+    }
 
     ESP_LOGI(TAG, "Created web server and registered endpoints.");
-    return server;
 }
 
 /**
  * @brief Stop web server.
  */
-void stop_server(httpd_handle_t server)
+void http_stop_server(void)
 {
-    if (server)
-    {
-        ESP_LOGI(TAG, "Closing web server.");
-        httpd_stop(server);
-    }
+
+    ESP_LOGI(TAG, "Closing web server.");
+    httpd_stop(server);
 }
