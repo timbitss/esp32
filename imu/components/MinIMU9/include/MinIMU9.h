@@ -16,6 +16,7 @@
 template<typename T> struct IMU_vector
 {
     T x, y, z;
+    IMU_vector(): x{0}, y{0}, z{0}{}
 };
 
 class MinIMU9
@@ -26,12 +27,20 @@ public:
 
     bool Test_LSM6(); 
     void Read();      
-    const IMU_vector<float>* Get_xl();
-    const IMU_vector<float>* Get_gyro();
-    const IMU_vector<float>* Get_mag();
+
+    // Last values read from IMU. 
+    IMU_vector<float> xl; // [g] 
+    IMU_vector<float> gyro; // [dps]
+    IMU_vector<float> mag; 
 
 private:
-    /* LSM6DS33 Register addresses. */
+    // I2C Device Addresses 
+    enum class I2C_device_addr
+    {
+        LSM6DS33_DEVICE_ADDR = 0b1101011, // Accelerometer and gyrometer.
+        LIS3MD_DEVICE_ADDR = 0b0011110    // Magnetometer.
+    };
+    // LSM6DS33 Register addresses. 
     enum class LSM6_reg_addr
     {
         FUNC_CFG_ACCESS   = 0x01,
@@ -103,14 +112,36 @@ private:
         MD1_CFG           = 0x5E,
         MD2_CFG           = 0x5F,
     };
+    /* LIS3MDL Register addresses */
+    enum class LIS3_reg_addr
+    {
+      WHO_AM_I    = 0x0F,
+
+      CTRL_REG1   = 0x20,
+      CTRL_REG2   = 0x21,
+      CTRL_REG3   = 0x22,
+      CTRL_REG4   = 0x23,
+      CTRL_REG5   = 0x24,
+
+      STATUS_REG  = 0x27,
+      OUT_X_L     = 0x28,
+      OUT_X_H     = 0x29,
+      OUT_Y_L     = 0x2A,
+      OUT_Y_H     = 0x2B,
+      OUT_Z_L     = 0x2C,
+      OUT_Z_H     = 0x2D,
+      TEMP_OUT_L  = 0x2E,
+      TEMP_OUT_H  = 0x2F,
+      INT_CFG     = 0x30,
+      INT_SRC     = 0x31,
+      INT_THS_L   = 0x32,
+      INT_THS_H   = 0x33,
+    };
 
     void Init_LSM6();
-    bool LSM6_register_read(LSM6_reg_addr reg_addr, uint8_t *data, size_t len);
-    bool LSM6_register_write_byte(LSM6_reg_addr reg_addr, uint8_t data);
+    bool Register_read(I2C_device_addr device_addr, uint8_t reg_addr, uint8_t *data, size_t len);
+    bool Register_write_byte(I2C_device_addr device_addr, uint8_t reg_addr, uint8_t data);
 
-    IMU_vector<float> xl;  
-    IMU_vector<float> gyro;
-    IMU_vector<float> mag;
     i2c_port_t i2c_port;
     i2c_cmd_handle_t i2c_cmd_handle;
 };
