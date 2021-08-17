@@ -1,12 +1,12 @@
 /**
- * @file ActiveObject.cpp
+ * @file MinIMU9.cpp
  * @author Timothy Nguyen
- * @brief Active Object Framework using FreeRTOS
- * @version 0.1
- * @date 2021-08-08
+ * @brief Pololu MinIMU-9 v5 Drivers for the ESP32-Pico-D4.
+ * @date 2021-08-16
  * 
- * Adapted from Herb Sutter's article: "Prefer Using Active Objects Instead of Naked Threads".
+ * The IMU board features an LSM6DS33 accelerometer and gyrometer and an LIS3MD magnetometer.
  */
+
 
 #include "MinIMU9.h"
 #include "esp_log.h"
