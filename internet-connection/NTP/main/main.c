@@ -196,7 +196,7 @@ void app_main()
     // Check which wakeup source triggered reset from deep-sleep
     get_wakeup_cause();
 
-    // Set local timezone
+    // Set UNIX local timezone, required each reset.
     setenv("TZ", "PST8PDT", 1);
     tzset();
 

@@ -6,7 +6,7 @@
 
 //--------------------------------------------------------------
 
-#define GPIO_OUT_BIT_MASK (1ULL << GPIO_NUM_22)  // use PIN22 for LED
+#define GPIO_OUT_BIT_MASK (1ULL << GPIO_NUM_19)  // use GPIO19 for LED
 
 #define ON 1
 #define OFF 0
@@ -30,7 +30,7 @@ void app_main(void)
   uint8_t led_out = 0;
   const TickType_t interval = pdMS_TO_TICKS(1000);
   while(true){
-    gpio_set_level(GPIO_NUM_22, led_out);
+    gpio_set_level(GPIO_NUM_19, led_out);
     vTaskDelay(interval);
     led_out ^= 1;
   }

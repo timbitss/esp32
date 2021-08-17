@@ -7,6 +7,8 @@
  * 
  *       If the AP's SSID and password are not in stored in NVS Flash, the program sets the ESP32 as an AP.
  *       The user must then connect to the ESP32 and enter AP credentials through a web browser.
+ * 
+ * @note  Configure credentials for ESP32 as soft-AP in menuconfig prior to flashing.
  */
 
 #include <stdio.h>
