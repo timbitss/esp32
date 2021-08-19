@@ -98,7 +98,7 @@ void MinIMU9::Read()
  * 
  * @return float Pitch angle [-90°, +90°].
  * 
- * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! 
+ * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! See AN3461 pg. 11.
  */
 float MinIMU9::Calc_Pitch_Angle()
 {
@@ -110,7 +110,7 @@ float MinIMU9::Calc_Pitch_Angle()
  * 
  * @return float Roll angle [-180°, +180°].
  * 
- * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! 
+ * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! See AN3461 pg. 11.
  */
 float MinIMU9::Calc_Roll_Angle()
 {
