@@ -1,7 +1,7 @@
 # Register component into build system
-idf_component_register(SRCS "MinIMU9.cpp"
+idf_component_register(SRCS "RCFilter.cpp"
                        INCLUDE_DIRS "include"
                        # list of components required by the public interface of this component
-                       REQUIRES  RCFilter
+                       REQUIRES  
                        # list of components required by source file 
-                       PRIV_REQUIRES RCFilter)
+                       PRIV_REQUIRES )

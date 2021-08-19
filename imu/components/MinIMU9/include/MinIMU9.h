@@ -5,12 +5,15 @@
  * @date 2021-08-16
  * 
  * The IMU board features an LSM6DS33 accelerometer and gyrometer and an LIS3MD magnetometer.
+ * 
+ * Roll and tilt measurements follow rotation sequence Ryxz (yaw -> roll ->).
  */
 
 #pragma once
 
 #include <cstdint>
 #include "driver/i2c.h"
+#include "RCFilter.h"
 
 /* Raw IMU measurements in three axes. */
 template<typename T> struct IMU_vector
@@ -22,14 +25,14 @@ template<typename T> struct IMU_vector
 class MinIMU9
 {
 public:
-    MinIMU9(i2c_port_t i2c_port_num, const i2c_config_t *i2c_conf); 
+    MinIMU9(i2c_port_t i2c_port_num, const i2c_config_t *i2c_conf, uint32_t f_sampling, float cutoff_freq = 0.0f); 
     ~MinIMU9();
 
     bool Test_LSM6(); 
     void Read();
-    float Calc_Pitch_Angle(); // Angle of x-axis relative to ground [-180°, +180°].  
-    float Calc_Roll_Angle();  // Angle of y-axis relative to ground [-90°, +90°].
-    float Calc_Tilt_Angle();  // Angle of tilt from vertical [0, 180°]
+    float Calc_Pitch_Angle(bool with_filter = false); // Angle of x-axis relative to ground [-180°, +180°].  
+    float Calc_Roll_Angle(bool with_filter = false);  // Angle of y-axis relative to ground [-90°, +90°].
+    float Calc_Tilt_Angle(bool with_filter = false);  // Angle of tilt from vertical [0, 180°]
 
     // Last values read from IMU. 
     IMU_vector<float> xl;   // [g] 
@@ -147,6 +150,8 @@ private:
 
     i2c_port_t i2c_port;
     i2c_cmd_handle_t i2c_cmd_handle;
+    RCFilter pitch_filter, roll_filter, tilt_filter;
+    bool use_filters;
 };
 
 

@@ -8,6 +8,8 @@
  * 
  * Inclination sensing using an accelerometer resources: https://www.nxp.com/files-static/sensors/doc/app_note/AN3461.pdf
  *                                                       https://stanford.edu/class/ee267/notes/ee267_notes_imu.pdf.
+ * 
+ * Roll and tilt measurements follow rotation sequence Ryxz (yaw -> roll -> pitch).
  */
 
 #include <cassert>
@@ -15,6 +17,7 @@
 #include "MinIMU9.h"
 #include "esp_log.h"
 #include "driver/i2c.h"
+#include "RCFilter.h"
 
 #define PI 3.14159265F
 
@@ -27,8 +30,14 @@ static inline int sgn(float x);
  * 
  * @param i2c_port_num I2C Port Number.
  * @param i2c_conf     I2C Configuration Structure.
+ * @param f_sampling   Sampling frequency in Hz.
+ * @param f_cutoff     Cut-off frequency for LPF in Hz (OPTIONAL).
+ * 
+ * Specifying a cut-off frequency enables low-pass filtering.
  */
-MinIMU9::MinIMU9(i2c_port_t i2c_port_num, const i2c_config_t *i2c_conf) : i2c_port{i2c_port_num}
+MinIMU9::MinIMU9(i2c_port_t i2c_port_num, const i2c_config_t *i2c_conf, uint32_t f_sampling, float f_cutoff) 
+: i2c_port{i2c_port_num}, pitch_filter{f_sampling, f_cutoff}, roll_filter{f_sampling, f_cutoff}, 
+  tilt_filter{f_sampling, f_cutoff}
 {
     /* Initialize I2C Port */
     ESP_ERROR_CHECK(i2c_param_config(i2c_port_num, i2c_conf));
@@ -38,6 +47,20 @@ MinIMU9::MinIMU9(i2c_port_t i2c_port_num, const i2c_config_t *i2c_conf) : i2c_po
     /* Initialize LSM6DS33 */
     Init_LSM6();
     ESP_LOGI(TAG, "Initialized LSM6DS33");
+
+    /* If cut-off frequency specified, use IIR filters */
+    if(f_cutoff > 0)
+    {
+        use_filters = true;
+        ESP_LOGI(TAG, "Filters enabled.");
+    }
+    else
+    {
+        use_filters = false;
+        ESP_LOGI(TAG, "Filters disabled.");
+    }
+
+    ESP_LOGI(TAG, "MinIMU9 object constructed.");
 }
 
 /**
@@ -96,35 +119,67 @@ void MinIMU9::Read()
 /**
  * @brief Calculate pitch around the y-axis.
  * 
+ * @param with_filter True: Filter pitch angle using IIR Filter.
+ *                          Cut-off frequency must be specified during initialization.
+ *                    False: Do not use IIR Filter (Default).
+ * 
  * @return float Pitch angle [-180°, +180°].
  * 
  * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! See AN3461 pg. 11.
  */
-float MinIMU9::Calc_Pitch_Angle()
+float MinIMU9::Calc_Pitch_Angle(bool with_filter)
 {
-    return atan2f(xl.x, sgn(xl.z) * sqrt(xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
+    float pitch_angle = atan2f(xl.x, sgn(xl.z) * sqrt(xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
+
+    if(with_filter && use_filters)
+    {
+        return pitch_filter.filter(pitch_angle);
+    }
+    return pitch_angle;
 } 
 
 /**
  * @brief Calculate roll around the x-axis. 
  * 
+ * @param with_filter True: Filter roll angle using IIR Filter.
+ *                          Cut-off frequency must be specified during initialization.
+ *                    False: Do not use IIR Filter (Default)
+ * 
  * @return float Roll angle [-90°, +90°].
  * 
  * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! See AN3461 pg. 11.
  */
-float MinIMU9::Calc_Roll_Angle()
+float MinIMU9::Calc_Roll_Angle(bool with_filter)
 {
-    return atan2f(xl.y,  sqrt(xl.x * xl.x + xl.z * xl.z)) * (180.0 / PI);
+    float roll_angle = atan2f(xl.y,  sqrt(xl.x * xl.x + xl.z * xl.z)) * (180.0 / PI);
+
+    if(with_filter && use_filters)
+    {
+        return roll_filter.filter(roll_angle);
+    }
+    return roll_angle;
 }  
 
 /**
  * @brief Calculate tilt angle about vertical.
  * 
+ * @param with_filter True: Filter tilt angle using IIR Filter.
+ *                          Cut-off frequency must be specified during initialization.
+ *                    False: Do not use IIR Filter (Default)
+ * 
  * @return float Tilt angle [0°, 180°].
+ * 
+ * Function assumes xl = <0, 0, 1> g when at rest.
  */
-float MinIMU9::Calc_Tilt_Angle()
+float MinIMU9::Calc_Tilt_Angle(bool with_filter)
 {
-    return acosf(xl.z / sqrt(xl.x * xl.x + xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
+    float tilt_angle = acosf(xl.z / sqrt(xl.x * xl.x + xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
+
+    if(with_filter && use_filters)
+    {
+        return tilt_filter.filter(tilt_angle);
+    }
+    return tilt_angle;
 }
 
 /**

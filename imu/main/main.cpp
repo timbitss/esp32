@@ -22,7 +22,12 @@ void app_main(void)
     i2c_conf.sda_io_num = sda_io_num;
     i2c_conf.scl_pullup_en = false;
     i2c_conf.sda_pullup_en = false;
-    MinIMU9 imu(port_num, &i2c_conf);
+
+    constexpr uint32_t sample_time_ms = 100;
+    constexpr uint32_t sampling_freq_hz = 1.0 / (sample_time_ms / 1000.0f);
+    constexpr float cutoff_freq_hz = 0.5f;
+
+    MinIMU9 imu(port_num, &i2c_conf, sampling_freq_hz, cutoff_freq_hz);
 
     imu.Test_LSM6();
 
@@ -30,8 +35,9 @@ void app_main(void)
     while(1)
     {
         imu.Read();
-        printf("%.3f, %.3f, %.3f, %.3f, %.3f, %.3f\r\n", imu.xl.x, imu.xl.y, imu.xl.z, 
-                                    imu.Calc_Pitch_Angle(), imu.Calc_Roll_Angle(), imu.Calc_Tilt_Angle());
-        vTaskDelay(pdMS_TO_TICKS(100));
+        printf("%.3f, %.3f, %.3f, %.3f, %.3f, %.3f\r\n", 
+            imu.Calc_Pitch_Angle(), imu.Calc_Roll_Angle(), imu.Calc_Tilt_Angle(),
+            imu.Calc_Pitch_Angle(true), imu.Calc_Roll_Angle(true), imu.Calc_Tilt_Angle(true));
+        vTaskDelay(pdMS_TO_TICKS(sample_time_ms));
     }
 }
