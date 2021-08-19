@@ -30,8 +30,8 @@ void app_main(void)
     while(1)
     {
         imu.Read();
-        printf("%.3f, %.3f, %.3f, %.3f, %.3f\r\n", imu.xl.x, imu.xl.y, imu.xl.z, 
-                                                   imu.Calc_Pitch_Angle(), imu.Calc_Roll_Angle());
+        printf("%.3f, %.3f, %.3f, %.3f, %.3f, %.3f\r\n", imu.xl.x, imu.xl.y, imu.xl.z, 
+                                    imu.Calc_Pitch_Angle(), imu.Calc_Roll_Angle(), imu.Calc_Tilt_Angle());
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }

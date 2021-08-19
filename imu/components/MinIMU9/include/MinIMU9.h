@@ -27,8 +27,9 @@ public:
 
     bool Test_LSM6(); 
     void Read();
-    float Calc_Pitch_Angle(); // Angle of x-axis relative to ground [-90°, +90°].  
-    float Calc_Roll_Angle();  // Angle of y-axis relative to ground [-180°, +180°].
+    float Calc_Pitch_Angle(); // Angle of x-axis relative to ground [-180°, +180°].  
+    float Calc_Roll_Angle();  // Angle of y-axis relative to ground [-90°, +90°].
+    float Calc_Tilt_Angle();  // Angle of tilt from vertical [0, 180°]
 
     // Last values read from IMU. 
     IMU_vector<float> xl;   // [g] 

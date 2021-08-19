@@ -96,27 +96,40 @@ void MinIMU9::Read()
 /**
  * @brief Calculate pitch around the y-axis.
  * 
- * @return float Pitch angle [-90°, +90°].
+ * @return float Pitch angle [-180°, +180°].
  * 
  * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! See AN3461 pg. 11.
  */
 float MinIMU9::Calc_Pitch_Angle()
 {
-    return atan2f(xl.x, sqrt(xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
+    return atan2f(xl.x, sgn(xl.z) * sqrt(xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
 } 
 
 /**
  * @brief Calculate roll around the x-axis. 
  * 
- * @return float Roll angle [-180°, +180°].
+ * @return float Roll angle [-90°, +90°].
  * 
  * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! See AN3461 pg. 11.
  */
 float MinIMU9::Calc_Roll_Angle()
 {
-    return atan2f(xl.y, sgn(xl.z) * sqrt(xl.x * xl.x + xl.z * xl.z)) * (180.0 / PI);
+    return atan2f(xl.y,  sqrt(xl.x * xl.x + xl.z * xl.z)) * (180.0 / PI);
 }  
 
+/**
+ * @brief Calculate tilt angle about vertical.
+ * 
+ * @return float Tilt angle [0°, 180°].
+ */
+float MinIMU9::Calc_Tilt_Angle()
+{
+    return acosf(xl.z / sqrt(xl.x * xl.x + xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
+}
+
+/**
+ 
+ */
 /**
  * @brief Configure and turn on LSM6DS33's accelerometer and gyrometer.
  * 
