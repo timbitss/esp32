@@ -26,10 +26,12 @@ public:
     ~MinIMU9();
 
     bool Test_LSM6(); 
-    void Read();      
+    void Read();
+    float Calc_Pitch_Angle(); // Angle of x-axis relative to ground [-90°, +90°].  
+    float Calc_Roll_Angle();  // Angle of y-axis relative to ground [-180°, +180°].
 
     // Last values read from IMU. 
-    IMU_vector<float> xl; // [g] 
+    IMU_vector<float> xl;   // [g] 
     IMU_vector<float> gyro; // [dps]
     IMU_vector<float> mag; 
 
@@ -145,4 +147,5 @@ private:
     i2c_port_t i2c_port;
     i2c_cmd_handle_t i2c_cmd_handle;
 };
+
 

@@ -5,14 +5,22 @@
  * @date 2021-08-16
  * 
  * The IMU board features an LSM6DS33 accelerometer and gyrometer and an LIS3MD magnetometer.
+ * 
+ * Inclination sensing using an accelerometer resources: https://www.nxp.com/files-static/sensors/doc/app_note/AN3461.pdf
+ *                                                       https://stanford.edu/class/ee267/notes/ee267_notes_imu.pdf.
  */
 
 #include <cassert>
+#include <cmath>
 #include "MinIMU9.h"
 #include "esp_log.h"
 #include "driver/i2c.h"
 
+#define PI 3.14159265F
+
 static const char *TAG = "MinIMU9";
+
+static inline int sgn(float x);
 
 /**
  * @brief Configure and initialize the I2C Port and IMU device.  
@@ -86,7 +94,33 @@ void MinIMU9::Read()
 }
 
 /**
+ * @brief Calculate pitch around the y-axis.
+ * 
+ * @return float Pitch angle [-90°, +90°].
+ * 
+ * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! 
+ */
+float MinIMU9::Calc_Pitch_Angle()
+{
+    return atan2f(xl.x, sqrt(xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
+} 
+
+/**
+ * @brief Calculate roll around the x-axis. 
+ * 
+ * @return float Roll angle [-180°, +180°].
+ * 
+ * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! 
+ */
+float MinIMU9::Calc_Roll_Angle()
+{
+    return atan2f(xl.y, sgn(xl.z) * sqrt(xl.x * xl.x + xl.z * xl.z)) * (180.0 / PI);
+}  
+
+/**
  * @brief Configure and turn on LSM6DS33's accelerometer and gyrometer.
+ * 
+ * @note Sign required in the denominator for atan2() to work properly.
  */
 void MinIMU9::Init_LSM6()
 {
@@ -113,14 +147,14 @@ void MinIMU9::Init_LSM6()
 bool MinIMU9::Register_read(I2C_device_addr device_addr, uint8_t reg_addr, uint8_t *data, size_t len)
 {
     // Create I2C command queue.
-    i2c_cmd_handle = i2c_cmd_link_create(); 
+    i2c_cmd_handle = i2c_cmd_link_create();
     assert(i2c_cmd_handle != NULL);
 
     // Append R/~W bit to device address.
     uint8_t device_addr_write = (uint8_t)device_addr << 1;
     uint8_t device_addr_read = device_addr_write | 0x01;
 
-    // Add I2C commands to queue. 
+    // Add I2C commands to queue.
     ESP_ERROR_CHECK(i2c_master_start(i2c_cmd_handle));              // Start transmission.
     i2c_master_write_byte(i2c_cmd_handle, device_addr_write, true); // Request write operation
     i2c_master_write_byte(i2c_cmd_handle, reg_addr, true);          // Indicate register to read from.
@@ -131,13 +165,13 @@ bool MinIMU9::Register_read(I2C_device_addr device_addr, uint8_t reg_addr, uint8
         i2c_master_read(i2c_cmd_handle, data, len - 1, I2C_MASTER_ACK);
     }
     i2c_master_read(i2c_cmd_handle, data + len - 1, 1, I2C_MASTER_NACK);
-    i2c_master_stop(i2c_cmd_handle);                                // Stop transmission.
+    i2c_master_stop(i2c_cmd_handle); // Stop transmission.
 
     // Execute transaction.
-    ESP_ERROR_CHECK(i2c_master_cmd_begin(i2c_port, i2c_cmd_handle, pdMS_TO_TICKS(1000))); 
-    
+    ESP_ERROR_CHECK(i2c_master_cmd_begin(i2c_port, i2c_cmd_handle, pdMS_TO_TICKS(1000)));
+
     // Delete command queue.
-    i2c_cmd_link_delete(i2c_cmd_handle);                                                  
+    i2c_cmd_link_delete(i2c_cmd_handle);
     return true;
 }
 
@@ -153,23 +187,28 @@ bool MinIMU9::Register_read(I2C_device_addr device_addr, uint8_t reg_addr, uint8
 bool MinIMU9::Register_write_byte(I2C_device_addr device_addr, uint8_t reg_addr, uint8_t data)
 {
     // Create I2C command queue
-    i2c_cmd_handle = i2c_cmd_link_create(); 
+    i2c_cmd_handle = i2c_cmd_link_create();
     assert(i2c_cmd_handle != NULL);
 
     // Append ~W bit to device address.
     uint8_t device_addr_write = (uint8_t)device_addr << 1;
-    
+
     // Add I2C commands to queue.
-    ESP_ERROR_CHECK(i2c_master_start(i2c_cmd_handle)); // Start transmission.
+    ESP_ERROR_CHECK(i2c_master_start(i2c_cmd_handle));              // Start transmission.
     i2c_master_write_byte(i2c_cmd_handle, device_addr_write, true); // Request write operation
     i2c_master_write_byte(i2c_cmd_handle, (uint8_t)reg_addr, true); // Indicate register to write to.
-    i2c_master_write_byte(i2c_cmd_handle, data, true); // Write data byte to register.
-    i2c_master_stop(i2c_cmd_handle); // Stop transmission.
+    i2c_master_write_byte(i2c_cmd_handle, data, true);              // Write data byte to register.
+    i2c_master_stop(i2c_cmd_handle);                                // Stop transmission.
 
     // Execute transaction.
-    ESP_ERROR_CHECK(i2c_master_cmd_begin(i2c_port, i2c_cmd_handle, pdMS_TO_TICKS(1000))); 
+    ESP_ERROR_CHECK(i2c_master_cmd_begin(i2c_port, i2c_cmd_handle, pdMS_TO_TICKS(1000)));
 
     // Delete command queue.
-    i2c_cmd_link_delete(i2c_cmd_handle); 
+    i2c_cmd_link_delete(i2c_cmd_handle);
     return true;
+}
+
+static inline int sgn(float x)
+{
+    return (x >= 0) ? 1.0F : -1.0F;
 }

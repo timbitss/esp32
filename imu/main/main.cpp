@@ -26,12 +26,12 @@ void app_main(void)
 
     imu.Test_LSM6();
 
-    // Read IMU every 500 ms.
+    // Read IMU every 100 ms.
     while(1)
     {
         imu.Read();
-        ESP_LOGI(TAG, "Accel: <%.3f %.3f %.3f> Gyro: <%.3f %.3f %.3f>", imu.xl.x, imu.xl.y, imu.xl.z,
-                                                                        imu.gyro.x, imu.gyro.y, imu.gyro.z);
-        vTaskDelay(pdMS_TO_TICKS(500));
+        printf("%.3f, %.3f, %.3f, %.3f, %.3f\r\n", imu.xl.x, imu.xl.y, imu.xl.z, 
+                                                   imu.Calc_Pitch_Angle(), imu.Calc_Roll_Angle());
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
