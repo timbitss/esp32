@@ -23,7 +23,7 @@ void app_main(void)
     i2c_conf.scl_pullup_en = false;
     i2c_conf.sda_pullup_en = false;
 
-    constexpr uint32_t sample_time_ms = 100;
+    constexpr uint32_t sample_time_ms = 10;
     constexpr uint32_t sampling_freq_hz = 1.0 / (sample_time_ms / 1000.0f);
     constexpr float cutoff_freq_hz = 0.5f;
 
@@ -31,13 +31,15 @@ void app_main(void)
 
     imu.Test_LSM6();
 
-    // Read IMU every 100 ms.
+    // Read IMU every 10 ms.
     while(1)
     {
         imu.Read();
-        printf("%.3f, %.3f, %.3f, %.3f, %.3f, %.3f\r\n", 
-            imu.Calc_Pitch_Angle(), imu.Calc_Roll_Angle(), imu.Calc_Tilt_Angle(),
-            imu.Calc_Pitch_Angle(true), imu.Calc_Roll_Angle(true), imu.Calc_Tilt_Angle(true));
+        printf("%.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\r\n", 
+            imu.Calc_Pitch_Xl(), imu.Calc_Pitch_Gyro(), 
+            imu.Calc_Roll_Xl(), imu.Calc_Roll_Gyro(),
+            imu.gyro.x, imu.gyro.y, imu.gyro.z,
+            imu.xl.x, imu.xl.y, imu.xl.z);
         vTaskDelay(pdMS_TO_TICKS(sample_time_ms));
     }
 }

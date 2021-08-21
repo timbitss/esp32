@@ -20,11 +20,11 @@ static const char* TAG = "RCFilter";
  * 
  * @param sampling_freq Sampling frequency in Hz.
  * @param cutoff_freq   Cut off frequency in Hz.
+ * @note To prevent aliasing, the cutoff frequency of the filter must be below the Nyquist frequency.
  * 
- * To prevent aliasing, the cutoff frequency must be below the Nyquist frequency (1/2 the sampling frequency).
- * Smaller cutoff frequency = more filtering = more delay. 
+ * Tip: Smaller cutoff frequency = more filtering = more delay. 
  */
-RCFilter::RCFilter(uint32_t sampling_freq_hz, float cutoff_freq_hz): A{1.0f}, prev_output{0.0f}
+RCFilter::RCFilter(uint32_t sampling_freq_hz, float cutoff_freq_hz): A{1.0f}, output{0.0f}
 {
     if(cutoff_freq_hz != 0.0f)
     {
@@ -48,7 +48,6 @@ RCFilter::RCFilter(uint32_t sampling_freq_hz, float cutoff_freq_hz): A{1.0f}, pr
 float RCFilter::filter(float input_sig)
 {
     // Equivalent to (1-A) * Y[n-1] + A * X[n]
-    float output = prev_output + A * (input_sig - prev_output); 
-    prev_output = output;
+    output = output + A * (input_sig - output); 
     return output;
 }

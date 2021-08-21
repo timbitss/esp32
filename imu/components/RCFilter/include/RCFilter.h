@@ -7,7 +7,7 @@
  * 
  * Based off https://www.dsp-weimich.com/digital-signal-processing/iir-first-order-digital-filter/.
  *
- * To prevent aliasing, the cutoff frequency must be below the Nyquist frequency (1/2 the sampling frequency).
+ * To prevent aliasing, the cutoff frequency of the filter must be below the Nyquist frequency (1/2 the sampling frequency).
  */
 
 #pragma once 
@@ -23,5 +23,5 @@ public:
 
 private:
     float A;
-    float prev_output;
+    float output; 
 };
