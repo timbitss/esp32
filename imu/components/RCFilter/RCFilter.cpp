@@ -47,7 +47,7 @@ RCFilter::RCFilter(uint32_t sampling_freq_hz, float cutoff_freq_hz): A{1.0f}, ou
  */
 float RCFilter::filter(float input_sig)
 {
-    // Equivalent to (1-A) * Y[n-1] + A * X[n]
+    // Equivalent to Y[n] = (1-A) * Y[n-1] + A * X[n]
     output = output + A * (input_sig - output); 
     return output;
 }
