@@ -24,24 +24,26 @@ void app_main(void)
     i2c_conf.sda_pullup_en = false;
 
     constexpr uint32_t sample_time_ms = 10;
-    constexpr uint32_t sampling_freq_hz = 1.0 / (sample_time_ms / 1000.0f);
-    constexpr float cutoff_freq_hz = 0.5f;
     constexpr float xl_weight = 0.02f;
     constexpr float gyro_weight = 0.98f;
 
-    MinIMU9 imu(port_num, &i2c_conf, sampling_freq_hz, cutoff_freq_hz, xl_weight, gyro_weight);
+    MinIMU9 imu(port_num, &i2c_conf, xl_weight, gyro_weight);
 
     imu.Test_LSM6();
     imu.Test_LIS3();
+    imu.Calibrate_Mag();
 
     // Read IMU every 10 ms.
     while(1)
     {
-        imu.Read(MinIMU9::Device::BOTH);
-        printf("%.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\r\n", 
-            imu.Calc_Pitch(MinIMU9::Sensor::ACCEL), imu.Calc_Pitch(MinIMU9::Sensor::GYRO), imu.Calc_Pitch(MinIMU9::Sensor::FUSION),
-            imu.Calc_Roll(MinIMU9::Sensor::ACCEL), imu.Calc_Roll(MinIMU9::Sensor::GYRO),   imu.Calc_Roll(MinIMU9::Sensor::FUSION),
-            imu.Get_Mag_X(), imu.Get_Mag_Y(), imu.Get_Mag_Z());
+        imu.Read();
+        imu.Calc_Orientation();
+        printf("%.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\r\n", 
+               imu.Get_Xl_X(), imu.Get_Xl_Y(), imu.Get_Xl_Z(),
+               imu.Get_Gyro_X(), imu.Get_Gyro_Y(), imu.Get_Gyro_Z(),
+               imu.Get_Pitch(), imu.Get_Roll(),
+               imu.Get_Mag_X(), imu.Get_Mag_Y(), imu.Get_Mag_Z(),
+               imu.Get_Heading());
         vTaskDelay(pdMS_TO_TICKS(sample_time_ms));
     }
 }

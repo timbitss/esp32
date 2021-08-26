@@ -15,7 +15,7 @@
 #include "driver/i2c.h"
 #include "RCFilter.h"
 
-/* Raw IMU measurements in three axes. */
+/* To store IMU measurements in three axes. */
 template <typename T>
 struct IMU_vector
 {
@@ -26,42 +26,31 @@ struct IMU_vector
 class MinIMU9
 {
 public:
-    enum class Sensor
-    {
-        GYRO,
-        ACCEL,
-        MAG,
-        FUSION,
-    };
-    enum class Device
-    {
-        LSM6,   // Read from accelerometer and gyroscope.
-        LIS3,   // Read from magnetometer.
-        BOTH,   // Read from both devices.            
-    };
-
-    MinIMU9(i2c_port_t i2c_port_num, const i2c_config_t *i2c_conf, uint32_t f_sampling, float cutoff_freq = 1.0f,
-            float _xl_weight = 0.02f, float _gyro_weight = 0.98f);
+    MinIMU9(i2c_port_t i2c_port_num, const i2c_config_t *i2c_conf, float _xl_weight = 0.02f, float _gyro_weight = 0.98f);
     ~MinIMU9();
- 
-    bool Test_LSM6();                                              // Verify contents of LSM6's WHO_AM_I register.
-    bool Test_LIS3();                                              // Verify contents of LIS3's WHO_AM_I register.
-    void Read(MinIMU9::Device device_to_read = Device::BOTH);      // Read and store newest data from the IMU.
-    float Calc_Pitch(Sensor sensor_to_use, bool with_LPF = false); // Angle of x-axis relative to ground in degrees.
-    float Calc_Roll(Sensor sensor_to_use, bool with_LPF = false);  // Angle of y-axis relative to ground in degrees.
-    float Calc_Tilt(bool with_LPF = false);                        // Angle of tilt from gravitational vector [0°, 180°].          
 
-    float Get_Xl_X() const { return xl.x; }
-    float Get_Xl_Y() const { return xl.y; }
-    float Get_Xl_Z() const { return xl.z; }
-    float Get_Gyro_X() const { return gyro.x; }
-    float Get_Gyro_Y() const { return gyro.y; }
-    float Get_Gyro_Z() const { return gyro.z; }
-    float Get_Mag_X() const { return mag.x; }
-    float Get_Mag_Y() const { return mag.y; }
-    float Get_Mag_Z() const { return mag.z; }
+    bool Test_LSM6();        // Verify contents of LSM6's WHO_AM_I register.
+    bool Test_LIS3();        // Verify contents of LIS3's WHO_AM_I register.
+    void Read();             // Read and store newest data from the IMU.
+    void Calc_Orientation(); // Calculate pitch, roll, and heading from the IMU data.
+    void Calibrate_Mag();    // Calibrate magnetometer.
+
+    float Get_Xl_X() const { return xl.x; }                  // [g]
+    float Get_Xl_Y() const { return xl.y; }                  // [g]
+    float Get_Xl_Z() const { return xl.z; }                  // [g]
+    float Get_Gyro_X() const { return gyro.x; }              // [dps]
+    float Get_Gyro_Y() const { return gyro.y; }              // [dps]
+    float Get_Gyro_Z() const { return gyro.z; }              // [dps]
+    float Get_Mag_X() const { return mag.x; } // [gauss]
+    float Get_Mag_Y() const { return mag.y; } // [gauss]
+    float Get_Mag_Z() const { return mag.z; }                // [gauss]
+    float Get_Pitch() const { return pitch; }                // [-180°, +180°] rotation around earth's y-axis.
+    float Get_Roll() const { return roll; }                  // [-90°, +90°] rotation around earth's x-axis.
+    float Get_Heading() const { return heading; }            // [0°, +359°] CW rotation of the body's x-axis
+                                                             // in the horizontal plane from true north.
 
 private:
+    // I2C device addresses.
     enum class I2C_device_addr
     {
         LSM6DS33_DEVICE_ADDR = 0b1101011, // Accelerometer and gyrometer.
@@ -139,7 +128,7 @@ private:
         MD1_CFG = 0x5E,
         MD2_CFG = 0x5F,
     };
-    /* LIS3MDL Register addresses */
+    // LIS3MDL Register addresses
     enum class LIS3_reg_addr
     {
         WHO_AM_I = 0x0F,
@@ -171,25 +160,26 @@ private:
     void Read_LIS3();
     bool Register_read(I2C_device_addr device_addr, uint8_t reg_addr, uint8_t *data, size_t len);
     bool Register_write_byte(I2C_device_addr device_addr, uint8_t reg_addr, uint8_t data);
-    
-    float Calc_Pitch_Xl(bool with_filter = false);
-    float Calc_Roll_Xl(bool with_filter = false); 
-    float Calc_Pitch_Gyro();
-    float Calc_Roll_Gyro();
+
+    float Calc_Pitch_Xl();
+    float Calc_Roll_Xl();
     float Calc_Pitch_Gyro_Fusion();
     float Calc_Roll_Gyro_Fusion();
-    float Calc_Pitch_Fusion();
-    float Calc_Roll_Fusion();
+    void Calc_Pitch_Fusion();
+    void Calc_Roll_Fusion();
+    void Calc_Heading();
 
     i2c_port_t i2c_port;
     i2c_cmd_handle_t i2c_cmd_handle;
-    RCFilter pitch_filter, roll_filter, tilt_filter; // LPFs for accelerometer angle estimations.
-    float pitch_gyro, roll_gyro;                     // History of gyroscope angle estimations.
-    float xl_weight, gyro_weight;                    // Weights used in complementary filter. Must add to 1.
-    float pitch, roll;                               // Angle estimations from sensor fusion.
-        
+    float xl_weight, gyro_weight; // Weights used in complementary filter. Must add to 1.
+    float pitch, roll, heading;   // Angle estimations from sensor fusion.
+
     // Most recent values read from IMU in all three axes.
     IMU_vector<float> xl;   // [g]
     IMU_vector<float> gyro; // [dps]
     IMU_vector<float> mag;  // [gauss]
+
+    // Calibration scale factors and zero-offset values for magnetometer readings.
+    float x_sf, y_sf;   // Scale factors.
+    float x_off, y_off; // Zero-offset values.
 };

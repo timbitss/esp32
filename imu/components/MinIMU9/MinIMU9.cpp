@@ -15,12 +15,15 @@
 
 #include <cassert>
 #include <cmath>
+#include <algorithm>
 #include "MinIMU9.h"
 #include "esp_log.h"
 #include "driver/i2c.h"
 #include "RCFilter.h"
 
 #define PI 3.14159265F
+
+using std::max; using std::min;
 
 static const char *TAG = "MinIMU9";
 
@@ -31,17 +34,13 @@ static inline int sgn(float x);
  * 
  * @param i2c_port_num I2C Port Number.
  * @param i2c_conf     I2C Configuration Structure.
- * @param f_sampling   Sampling frequency in Hz.
- * @param f_cutoff     Cut-off frequency for LPF in Hz (OPTIONAL).
  * @param _xl_weight   Accelerometer weight for complementary filter.
  * @param _gyro_weight Gyroscope weight for complementary filter. 
  * 
  * @note _xl_weight and _gyro_weight must sum to 1.
  */
-MinIMU9::MinIMU9(i2c_port_t i2c_port_num, const i2c_config_t *i2c_conf, uint32_t f_sampling, float f_cutoff, 
-                 float _xl_weight, float _gyro_weight) 
-: i2c_port{i2c_port_num}, pitch_filter{f_sampling, f_cutoff}, roll_filter{f_sampling, f_cutoff}, 
-  tilt_filter{f_sampling, f_cutoff}, pitch_gyro{0.0f}, roll_gyro{0.0f}, pitch{0.0f}, roll{0.0f}
+MinIMU9::MinIMU9(i2c_port_t i2c_port_num, const i2c_config_t *i2c_conf, float _xl_weight, float _gyro_weight) 
+: i2c_port{i2c_port_num}, pitch{0.0f}, roll{0.0f}, heading{0.0f}
 {
     /* Initialize I2C Port */
     ESP_ERROR_CHECK(i2c_param_config(i2c_port_num, i2c_conf));
@@ -64,6 +63,7 @@ MinIMU9::MinIMU9(i2c_port_t i2c_port_num, const i2c_config_t *i2c_conf, uint32_t
     else
     {
         ESP_LOGW(TAG, "Weights for complementary filter do not add to 1.");
+        // Assign default weights.
         xl_weight = 0.02f;
         gyro_weight = 0.98f;
     }
@@ -126,209 +126,86 @@ bool MinIMU9::Test_LIS3()
     }
 }
 
-
-
 /**
  * @brief Read and store IMU measurements in respective vectors.
- * 
- * @param device_to_read Read from either LSM6, LIS3, or both devices.
  */
-void MinIMU9::Read(MinIMU9::Device device_to_read)
+void MinIMU9::Read()
 {
-    switch(device_to_read)
-    {
-    case Device::LSM6:
-        Read_LSM6();
-        break;
-    case Device::LIS3:
-        Read_LIS3();
-        break;
-    case Device::BOTH:
-        Read_LSM6();
-        Read_LIS3();
-        break;
-    default:
-        ESP_LOGW(TAG, "Unrecognizable device.");
-        break;
-    }
-   
+    Read_LSM6();
+    Read_LIS3();
 }
 
 /**
- * @brief Calculate pitch angle around y-axis.
- * 
- * @param sensor_to_use Sensor to estimate pitch angle from.
- * @param with_LPF      Enable LPF for angle estimations using the accelerometer.
- * @return float        Pitch Angle.
- * @note Pitch angle from accelerometer is limited to [-180°, +180°].
+ * @brief Calculate pitch, roll, and heading from IMU data.
  */
-float MinIMU9::Calc_Pitch(Sensor sensor_to_use, bool with_LPF)
+void MinIMU9::Calc_Orientation()
 {
-    switch(sensor_to_use)
-    {
-    case Sensor::ACCEL:
-        return Calc_Pitch_Xl(with_LPF);
-        break;
-    case Sensor::GYRO:
-        return Calc_Pitch_Gyro();
-        break;
-    case Sensor::FUSION:
-        return Calc_Pitch_Fusion();
-        break;
-    default:
-        ESP_LOGW(TAG, "Sensor not recognized");
-        return -1;
-        break;
-    }
+    Calc_Pitch_Fusion();
+    Calc_Roll_Fusion();
+    Calc_Heading();
 }
 
 /**
- * @brief Calculate roll angle around x-axis.
- * 
- * @param sensor_to_use Sensor to estimate roll angle from.
- * @param with_LPF      Enable LPF for angle estimations using the accelerometer.
- * @return float        Roll Angle.
- * @note Roll angle from accelerometer is limited to [-90°, +90°].
+ * @brief Calibrate magnetometer to account for hard and soft iron sources.
  */
-float MinIMU9::Calc_Roll(Sensor sensor_to_use, bool with_LPF)
+void MinIMU9::Calibrate_Mag()
 {
-    switch(sensor_to_use)
+    ESP_LOGI(TAG, "Performing magnetometer calibration...");
+    ESP_LOGI(TAG, "Please rotate the device 360° on a horizontal service.");
+    float max_x = 0.0f, min_x = 0.0f, max_y = 0.0f, min_y = 0.0f;
+    static constexpr uint16_t samples_to_take = 500;
+
+    // Find maximum and minimum X and Y magnetic readings.
+    for(uint16_t i = 0; i < samples_to_take; i++)
     {
-    case Sensor::ACCEL:
-        return Calc_Roll_Xl(with_LPF);
-        break;
-    case Sensor::GYRO:
-        return Calc_Roll_Gyro();
-        break;
-    case Sensor::FUSION:
-        return Calc_Roll_Fusion();
-        break;
-    default:
-        ESP_LOGW(TAG, "Sensor not recognized");
-        return -1;
-        break;
+        Read();
+        min_x = min(min_x, mag.x);
+        min_y = min(min_y, mag.y);
+        max_x = max(max_x, mag.x);
+        max_y = max(max_y, mag.y);
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
+
+    // Determine scale factors and zero offset values.
+    float A = (max_y - min_y) / (max_x - min_x);
+    float B = 1.0f / A;
+    x_sf = A > 1.0f ? A : 1.0f;
+    y_sf = B > 1.0f ? B : 1.0f;
+    x_off = ((max_x - min_x) / 2.0f - max_x) * x_sf;
+    y_off = ((max_y - min_y) / 2.0f - max_y) * y_sf;
+ 
+
+    ESP_LOGI(TAG, "Magnetometer calibration completed. " 
+                   "x_sf: %.3f, y_sf: %.3f, x_off: %.3f, y_off: %.3f",
+                   x_sf, y_sf, x_off, y_off);
 }
 
 /**
- * @brief Calculate pitch around the y-axis using the accelerometer.
- * 
- * @param with_filter True: Filter pitch angle using IIR Filter.
- *                    False: Do not use IIR Filter (Default).
+ * @brief Calculate pitch around the earth's y-axis using the accelerometer.
  * 
  * @return float Pitch angle [-180°, +180°].
  * 
  * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! See AN3461 pg. 11.
  */
-float MinIMU9::Calc_Pitch_Xl(bool with_filter)
+float MinIMU9::Calc_Pitch_Xl()
 {
-    float pitch_angle = -atan2f(xl.x, sgn(xl.z) * sqrt(xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
-
-    if(with_filter)
-    {
-        return pitch_filter.filter(pitch_angle);
-    }
-    return pitch_angle;
+    return atan2f(xl.x, sgn(-xl.z) * sqrt(xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
 } 
 
 /**
- * @brief Calculate roll around the x-axis using the accelerometer. 
- * 
- * @param with_filter True: Filter roll angle using IIR Filter.
- *                    False: Do not use IIR Filter (Default)
- * 
+ * @brief Calculate roll around the earth's x-axis using the accelerometer. 
+ *
  * @return float Roll angle [-90°, +90°].
  * 
  * IMPORTANT: Either roll or pitch angle must be restricted to [-90°, +90°], but not both! See AN3461 pg. 11.
  */
-float MinIMU9::Calc_Roll_Xl(bool with_filter)
+float MinIMU9::Calc_Roll_Xl()
 {
-    float roll_angle = atan2f(xl.y,  sqrt(xl.x * xl.x + xl.z * xl.z)) * (180.0 / PI);
-
-    if(with_filter)
-    {
-        return roll_filter.filter(roll_angle);
-    }
-    return roll_angle;
+    return atan2f(-xl.y,  sqrt(xl.x * xl.x + xl.z * xl.z)) * (180.0 / PI);
 }  
 
 /**
- * @brief Calculate tilt angle about gravitational vector using the accelerometer.
- * 
- * @param with_LPF    True: Filter tilt angle using IIR Filter.
- *                    False: Do not use IIR Filter (Default)
- * 
- * @return float Tilt angle [0°, 180°].
- * 
- * Function assumes xl = <0, 0, 1> g when at rest.
- */
-float MinIMU9::Calc_Tilt(bool with_LPF)
-{
-    float tilt_angle = acosf(xl.z / sqrt(xl.x * xl.x + xl.y * xl.y + xl.z * xl.z)) * (180.0 / PI);
-
-    if(with_LPF)
-    {
-        return tilt_filter.filter(tilt_angle);
-    }
-    return tilt_angle;
-}
-
-/**
- * @brief Calculate pitch around y-axis from gyroscope.
- * 
- * @return float Pitch angle in degrees.
- */
-float MinIMU9::Calc_Pitch_Gyro()
-{
-    static bool first_calc = true;
-    static uint32_t t0 = 0;
-    
-    if(first_calc)
-    {
-        first_calc = false;
-        t0 = esp_timer_get_time() / 1000; 
-        return 0.0f;  // First sample, assume Pitch[0] = 0° (at rest).
-    }
-    else
-    {
-        // Integrate angular rate.
-        uint32_t tnew = esp_timer_get_time() / 1000;
-        uint32_t dt = tnew - t0;
-        t0 = tnew;
-        pitch_gyro = pitch_gyro + gyro.y * dt / 1000.0f;
-        return pitch_gyro; 
-    }
-}
-
-/**
- * @brief Calculate roll around x-axis from gyroscope.
- * 
- * @return float Roll angle in degrees.
- */
-float MinIMU9::Calc_Roll_Gyro()
-{
-    static bool first_calc = true;
-    static uint32_t t0 = 0; 
-  
-    if(first_calc)
-    {
-        first_calc = false;
-        t0 = esp_timer_get_time() / 1000; 
-        return 0.0f; // First sample, assume Roll[0] = 0° (at rest).
-    }
-    else
-    {
-        // Integrate angular rate.
-        uint32_t tnew = esp_timer_get_time() / 1000;
-        uint32_t dt = tnew - t0;
-        t0 = tnew;
-        roll_gyro = roll_gyro + gyro.x * dt / 1000.0f;
-        return roll_gyro;
-    }
-}
-
-/**
- * @brief Calculate pitch around y-axis from gyroscope for sensor fusion.
+ * @brief Calculate pitch around the earth's y-axis from gyroscope for sensor fusion.
  * 
  * @return float Pitch angle in degrees.
  */
@@ -349,12 +226,12 @@ float MinIMU9::Calc_Pitch_Gyro_Fusion()
         uint32_t tnew = esp_timer_get_time() / 1000;
         uint32_t dt = tnew - t0;
         t0 = tnew;
-        return pitch + gyro.y * dt / 1000.0f; // Notice that pitch estimation from sensor fusion is fed back.
+        return pitch + gyro.y * dt / 1000.0f; // Feed back previous pitch estimation.
     }
 }
 
 /**
- * @brief Calculate roll around x-axis from gyroscope for sensor fusion.
+ * @brief Calculate roll around the earth's x-axis from gyroscope for sensor fusion.
  * 
  * @return float Roll angle in degrees.
  */
@@ -375,30 +252,55 @@ float MinIMU9::Calc_Roll_Gyro_Fusion()
         uint32_t tnew = esp_timer_get_time() / 1000;
         uint32_t dt = tnew - t0;
         t0 = tnew;
-        return roll + gyro.x * dt / 1000.0f; // Notice that roll estimation from sensor fusion is fed back.
+        return roll + gyro.x * dt / 1000.0f; // Feed back previous roll estimation.
     } 
 }
 
 /**
  * @brief Calculate pitch angle by fusing gyroscope and accelerometer estimations.
- * 
- * @return float Complementary-filtered pitch angle [-180°, +180°]. 
  */
-float MinIMU9::Calc_Pitch_Fusion()
+void MinIMU9::Calc_Pitch_Fusion()
 {
     pitch = xl_weight * Calc_Pitch_Xl() + gyro_weight * Calc_Pitch_Gyro_Fusion(); 
-    return pitch;
 }
 
 /**
  * @brief Calculate roll angle by fusing gyroscope and accelerometer estimations.
- * 
- * @return float Complementary-filtered roll angle [-90°, +90°]. 
  */
-float MinIMU9::Calc_Roll_Fusion()
+void MinIMU9::Calc_Roll_Fusion()
 {
     roll = xl_weight * Calc_Roll_Xl() + gyro_weight * Calc_Roll_Gyro_Fusion();
-    return roll;
+}
+
+/**
+ * @brief Calculate heading, the angle between the longitudinal axis (the plane body) 
+ *        and true north, from the magnetometer.
+ * 
+ * @return float Heading angle [0°, +359°].
+ */
+void MinIMU9::Calc_Heading()
+{
+    float pitch_rad = pitch * (PI / 180.0f);
+    float roll_rad = roll * (PI / 180.0f);
+
+    // Transform magnetic readings to Earth's horizontal plane aka tilt compensation.
+    float X_h = mag.x * cosf(pitch_rad) + mag.y * sinf(roll_rad) * sinf(pitch_rad) - mag.z * cos(roll_rad) * sin(pitch_rad);
+    float Y_h = mag.y * cosf(roll_rad) + mag.z * sinf(roll_rad);
+
+    X_h = x_sf * X_h + x_off;
+    Y_h = y_sf * Y_h + y_off;
+
+    // Calculate heading relative to magnetic north in degrees.
+    heading = atan2f(Y_h, X_h) * (180.0f / PI);
+    if(heading < 0)
+    {
+        heading += 360; 
+    }
+
+    // Add declination angle to get heading relative to true north.
+    // See https://www.ngdc.noaa.gov/geomag/faqgeom.shtml#How_do_I_correct_my_compass_bearing_to_true_bearing
+    // static constexpr float declination = 15.99f; // In Vancouver, BC.
+    // heading += declination;
 }
 
 /**
@@ -413,6 +315,9 @@ void MinIMU9::Init_LSM6()
 
     // Gyro: ODR = 416Hz (High-Performance mode), FS = +-250 dps.
     Register_write_byte(I2C_device_addr::LSM6DS33_DEVICE_ADDR, (uint8_t)LSM6_reg_addr::CTRL2_G, 0x60);
+
+    // Flip sign of rotation in Y and Z direction.
+    Register_write_byte(I2C_device_addr::LSM6DS33_DEVICE_ADDR, (uint8_t)LSM6_reg_addr::ORIENT_CFG_G, 0x18);
 
     // Enable Block Data Update (BDU) feature.
     Register_write_byte(I2C_device_addr::LSM6DS33_DEVICE_ADDR, (uint8_t)LSM6_reg_addr::CTRL3_C, 0x44);
@@ -445,7 +350,7 @@ void MinIMU9::Init_LIS3()
 }
 
 /**
- * @brief Read accelerometer and gyroscope data from the LSM6DS33
+ * @brief Read and store accelerometer and gyroscope data from the LSM6DS33.
  */
 void MinIMU9::Read_LSM6()
 {
@@ -461,10 +366,13 @@ void MinIMU9::Read_LSM6()
     gyro.y = (int16_t)(read_buf[3] << 8 | read_buf[2]) * gyro_sensitivity_factor / 1000;
     gyro.z = (int16_t)(read_buf[5] << 8 | read_buf[4]) * gyro_sensitivity_factor / 1000;
     xl.x = (int16_t)(read_buf[7] << 8 | read_buf[6]) * xl_sensitivity_factor / 1000;
-    xl.y = (int16_t)(read_buf[9] << 8 | read_buf[8]) * xl_sensitivity_factor / 1000;
-    xl.z = (int16_t)(read_buf[11] << 8 | read_buf[10]) * xl_sensitivity_factor / 1000;
+    xl.y = -(int16_t)(read_buf[9] << 8 | read_buf[8]) * xl_sensitivity_factor / 1000;   // Note sign change.
+    xl.z = -(int16_t)(read_buf[11] << 8 | read_buf[10]) * xl_sensitivity_factor / 1000; // Note sign change.
 }
 
+/**
+ * @brief Read and store magnetometer data from the LIS3MD.
+ */
 void MinIMU9::Read_LIS3()
 {
     static constexpr uint8_t bytes_to_read = 6;  // 2 bytes * 6 axes.
@@ -478,8 +386,8 @@ void MinIMU9::Read_LIS3()
 
     // Perform concatenation and scaling.
     mag.x = (int16_t)(read_buf[1] << 8 | read_buf[0]) * mag_sensitivity_factor;
-    mag.y = (int16_t)(read_buf[3] << 8 | read_buf[2]) * mag_sensitivity_factor;
-    mag.z = (int16_t)(read_buf[5] << 8 | read_buf[4]) * mag_sensitivity_factor;
+    mag.y = -(int16_t)(read_buf[3] << 8 | read_buf[2]) * mag_sensitivity_factor; // Note sign change.
+    mag.z = -(int16_t)(read_buf[5] << 8 | read_buf[4]) * mag_sensitivity_factor; // Note sign change.
 }
 
 /**
